@@ -5,7 +5,7 @@ export const DARK: Palette = {
   border: '#1c2030', text: '#7b869c', dim: '#3a4258', bright: '#c8d0e0', white: '#e8ecf4',
   green: '#22c55e', red: '#ef4444', orange: '#eab308', blue: '#3b82f6',
   purple: '#a78bfa', cyan: '#06b6d4', pink: '#ec4899',
-  gBg: '06', gBo: '10', sBg: '04', sBo: '0c', lBg: '#0b0d15', sh: 'rgba(0,0,0,0.5)',
+  gBg: '0d', gBo: '18', sBg: '08', sBo: '14', lBg: '#0b0d15', sh: 'rgba(0,0,0,0.5)',
   diffAddBg: 'rgba(34,197,94,0.07)', diffDelBg: 'rgba(239,68,68,0.07)',
   diffAddHi: 'rgba(34,197,94,0.25)', diffDelHi: 'rgba(239,68,68,0.25)',
 };
@@ -15,7 +15,7 @@ export const LIGHT: Palette = {
   border: '#dde0e6', text: '#5f6b80', dim: '#a4adc0', bright: '#2c3547', white: '#161b26',
   green: '#16a34a', red: '#dc2626', orange: '#d97706', blue: '#2563eb',
   purple: '#7c3aed', cyan: '#0891b2', pink: '#db2777',
-  gBg: '06', gBo: '14', sBg: '05', sBo: '0e', lBg: '#ffffff', sh: 'rgba(0,0,0,0.06)',
+  gBg: '0d', gBo: '1c', sBg: '0a', sBo: '18', lBg: '#ffffff', sh: 'rgba(0,0,0,0.06)',
   diffAddBg: 'rgba(34,197,94,0.08)', diffDelBg: 'rgba(239,68,68,0.08)',
   diffAddHi: 'rgba(34,197,94,0.30)', diffDelHi: 'rgba(239,68,68,0.30)',
 };

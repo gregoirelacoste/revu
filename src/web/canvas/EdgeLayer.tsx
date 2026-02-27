@@ -7,13 +7,14 @@ interface Props {
   P: Palette;
   hasSelection: boolean;
   edgeSet: Set<string>;
+  highlightedEdges: Set<string>;
   onEdgeClick: (edge: EdgeData) => void;
   zoomLevel: number;
 }
 
 const SVG_OFFSET = 600;
 
-export function EdgeLayer({ edges, planetMap, P, hasSelection, edgeSet, onEdgeClick, zoomLevel }: Props) {
+export function EdgeLayer({ edges, planetMap, P, hasSelection, edgeSet, highlightedEdges, onEdgeClick, zoomLevel }: Props) {
   return (
     <svg style={{
       position: 'absolute', top: -SVG_OFFSET, left: -SVG_OFFSET,
@@ -37,10 +38,12 @@ export function EdgeLayer({ edges, planetMap, P, hasSelection, edgeSet, onEdgeCl
 
         const edgeKey = `${edge.from}|${edge.to}`;
         const isVisible = hasSelection && edgeSet.has(edgeKey);
+        const isHighlighted = highlightedEdges.has(edgeKey);
 
         return (
           <Edge key={edgeKey} edge={edge} from={from} to={to} P={P}
-            visible={isVisible} zoomLevel={zoomLevel} offset={SVG_OFFSET}
+            visible={isVisible} highlighted={isHighlighted}
+            zoomLevel={zoomLevel} offset={SVG_OFFSET}
             onClick={onEdgeClick} />
         );
       })}

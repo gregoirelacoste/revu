@@ -29,13 +29,13 @@ export function EdgeDetail({ edge, fromPlanet, toPlanet, P, onNavigate }: Props)
       <div style={{
         padding: '14px 14px 10px', borderBottom: `1px solid ${P.border}`,
       }}>
-        <div style={{ fontSize: 8, fontWeight: 700, color: P.dim, fontFamily: MONO, letterSpacing: 2, marginBottom: 4 }}>
+        <div style={{ fontSize: 10, fontWeight: 700, color: P.dim, fontFamily: MONO, letterSpacing: 2, marginBottom: 4 }}>
           LINK
         </div>
         <div style={{
           display: 'inline-block', padding: '2px 8px', borderRadius: 3,
           background: `${typeColor}15`, border: `1px solid ${typeColor}30`,
-          fontSize: 9, fontWeight: 700, color: typeColor, fontFamily: MONO, letterSpacing: 1,
+          fontSize: 11, fontWeight: 700, color: typeColor, fontFamily: MONO, letterSpacing: 1,
         }}>
           {linkInfo.label}
         </div>
@@ -43,7 +43,7 @@ export function EdgeDetail({ edge, fromPlanet, toPlanet, P, onNavigate }: Props)
           <span style={{
             marginLeft: 6, padding: '2px 6px', borderRadius: 3,
             background: `${P.cyan}12`, border: `1px solid ${P.cyan}25`,
-            fontSize: 8, fontWeight: 600, color: P.cyan, fontFamily: MONO,
+            fontSize: 10, fontWeight: 600, color: P.cyan, fontFamily: MONO,
           }}>CROSS-REPO</span>
         )}
       </div>
@@ -57,10 +57,10 @@ export function EdgeDetail({ edge, fromPlanet, toPlanet, P, onNavigate }: Props)
         }}>
           <span style={{ fontSize: 12 }}>&#9888;</span>
           <div>
-            <div style={{ fontSize: 10, fontWeight: 700, color: P.red, fontFamily: SANS }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: P.red, fontFamily: SANS }}>
               Signature Changed
             </div>
-            <div style={{ fontSize: 8, color: P.dim, fontFamily: MONO, marginTop: 1 }}>
+            <div style={{ fontSize: 10, color: P.dim, fontFamily: MONO, marginTop: 1 }}>
               Breaking change detected in target file
             </div>
           </div>
@@ -72,12 +72,12 @@ export function EdgeDetail({ edge, fromPlanet, toPlanet, P, onNavigate }: Props)
         padding: '10px 14px', borderBottom: `1px solid ${P.border}`,
         display: 'flex', alignItems: 'center', gap: 10,
       }}>
-        <span style={{ fontSize: 22, fontWeight: 900, color: riskColor, fontFamily: MONO }}>
+        <span style={{ fontSize: 24, fontWeight: 900, color: riskColor, fontFamily: MONO }}>
           {edge.riskCrit.toFixed(1)}
         </span>
         <div>
-          <div style={{ fontSize: 9, fontWeight: 600, color: P.bright, fontFamily: SANS }}>Risk Score</div>
-          <div style={{ fontSize: 7.5, color: P.dim, fontFamily: MONO }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: P.bright, fontFamily: SANS }}>Risk Score</div>
+          <div style={{ fontSize: 9, color: P.dim, fontFamily: MONO }}>
             {edge.critical ? 'CRITICAL' : edge.riskCrit >= 5 ? 'HIGH' : 'NORMAL'}
           </div>
         </div>
@@ -85,7 +85,7 @@ export function EdgeDetail({ edge, fromPlanet, toPlanet, P, onNavigate }: Props)
 
       {/* From → To planets */}
       <div style={{ padding: '10px 14px', borderBottom: `1px solid ${P.border}` }}>
-        <div style={{ fontSize: 8, fontWeight: 700, color: P.dim, fontFamily: MONO, letterSpacing: 1, marginBottom: 8 }}>
+        <div style={{ fontSize: 10, fontWeight: 700, color: P.dim, fontFamily: MONO, letterSpacing: 1, marginBottom: 8 }}>
           CONNECTION
         </div>
         <PlanetLink label="FROM" planet={fromPlanet} P={P} onNavigate={onNavigate} />
@@ -98,7 +98,7 @@ export function EdgeDetail({ edge, fromPlanet, toPlanet, P, onNavigate }: Props)
       {/* Specifiers */}
       {edge.specifiers && edge.specifiers.length > 0 && (
         <div style={{ padding: '10px 14px' }}>
-          <div style={{ fontSize: 8, fontWeight: 700, color: P.dim, fontFamily: MONO, letterSpacing: 1, marginBottom: 6 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: P.dim, fontFamily: MONO, letterSpacing: 1, marginBottom: 6 }}>
             SPECIFIERS ({edge.specifiers.length})
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
@@ -106,7 +106,7 @@ export function EdgeDetail({ edge, fromPlanet, toPlanet, P, onNavigate }: Props)
               <span key={s} style={{
                 padding: '2px 6px', borderRadius: 3,
                 background: `${typeColor}10`, border: `1px solid ${typeColor}18`,
-                fontSize: 9, fontFamily: MONO, color: P.bright,
+                fontSize: 11, fontFamily: MONO, color: P.bright,
               }}>{s}</span>
             ))}
           </div>
@@ -134,24 +134,24 @@ function PlanetLink({ label, planet, P, onNavigate }: {
       onMouseEnter={(e) => (e.currentTarget.style.background = `${P.border}44`)}
       onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}>
       <span style={{
-        fontSize: 6, fontWeight: 700, color: P.dim, fontFamily: MONO, width: 24, letterSpacing: 0.5,
+        fontSize: 7.5, fontWeight: 700, color: P.dim, fontFamily: MONO, width: 24, letterSpacing: 0.5,
       }}>{label}</span>
       <span style={{
         width: 16, height: 16, borderRadius: '50%', flexShrink: 0,
         background: `${iconC}15`, border: `1px solid ${iconC}30`,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: 6, fontWeight: 800, color: iconC, fontFamily: MONO,
+        fontSize: 7, fontWeight: 800, color: iconC, fontFamily: MONO,
       }}>{ic.i}</span>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{
-          fontSize: 10, fontWeight: 600, color: P.bright, fontFamily: MONO,
+          fontSize: 12, fontWeight: 600, color: P.bright, fontFamily: MONO,
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         }}>{planet.name}</div>
-        <div style={{ fontSize: 7, color: P.dim, fontFamily: MONO }}>
+        <div style={{ fontSize: 9, color: P.dim, fontFamily: MONO }}>
           {planet.galaxy.label} / {planet.system.label}
         </div>
       </div>
-      <span style={{ fontSize: 11, fontWeight: 800, color: pc, fontFamily: MONO }}>
+      <span style={{ fontSize: 13, fontWeight: 800, color: pc, fontFamily: MONO }}>
         {planet.crit.toFixed(1)}
       </span>
     </div>

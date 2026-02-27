@@ -8,6 +8,7 @@ interface EdgeProps {
   to: FlatPlanet;
   P: Palette;
   visible: boolean;
+  highlighted: boolean;
   zoomLevel: number;
   offset: number;
   onClick: (edge: EdgeData) => void;
@@ -27,15 +28,15 @@ function edgeOpacity(edge: EdgeData): number {
   return 0.55;
 }
 
-export function Edge({ edge, from, to, P, visible, zoomLevel, offset, onClick }: EdgeProps) {
+export function Edge({ edge, from, to, P, visible, highlighted, zoomLevel, offset, onClick }: EdgeProps) {
   const x1 = from.ax + offset;
   const y1 = from.ay + offset;
   const x2 = to.ax + offset;
   const y2 = to.ay + offset;
 
-  const ck = edge.sigChanged ? 'orange' : edge.critical ? 'red' : edge.cross ? 'cyan' : 'dim';
+  const ck = highlighted ? 'cyan' : edge.sigChanged ? 'orange' : edge.critical ? 'red' : edge.cross ? 'cyan' : 'dim';
   const color = P[ck as keyof Palette] as string;
-  const op = visible ? edgeOpacity(edge) : 0;
+  const op = highlighted ? 1.0 : visible ? edgeOpacity(edge) : 0;
 
   const dx = x2 - x1;
   const dy = y2 - y1;

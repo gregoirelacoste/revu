@@ -90,15 +90,15 @@ function SystemHeader({ s, g, c, P, onNavigate }: {
       padding: '14px 14px 10px', borderBottom: `1px solid ${P.border}`,
       background: `${c}06`,
     }}>
-      <div style={{ fontSize: 8, fontWeight: 700, color: `${c}88`, fontFamily: MONO, letterSpacing: 2, marginBottom: 2 }}>
+      <div style={{ fontSize: 10, fontWeight: 700, color: `${c}88`, fontFamily: MONO, letterSpacing: 2, marginBottom: 2 }}>
         SYSTEM
       </div>
-      <div style={{ fontSize: 13, fontWeight: 800, color: P.white, fontFamily: MONO }}>
+      <div style={{ fontSize: 16, fontWeight: 800, color: P.white, fontFamily: MONO }}>
         {s.label}
       </div>
       <div onClick={() => onNavigate({ kind: 'galaxy', id: g.id, galaxy: g })}
         style={{
-          fontSize: 9, color: c, fontFamily: MONO, marginTop: 2,
+          fontSize: 11, color: c, fontFamily: MONO, marginTop: 2,
           cursor: 'pointer', textDecoration: 'underline',
         }}>
         &#8592; {g.label}
@@ -132,22 +132,22 @@ function PlanetsList({ planets, tab, P, onNavigate }: {
               width: 16, height: 16, borderRadius: '50%', flexShrink: 0,
               background: `${pIconC}15`, border: `1px solid ${pIconC}30`,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 6, fontWeight: 800, color: pIconC, fontFamily: MONO,
+              fontSize: 7, fontWeight: 800, color: pIconC, fontFamily: MONO,
             }}>{pIc.i}</span>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{
-                fontSize: 10, fontWeight: 600, color: P.bright, fontFamily: MONO,
+                fontSize: 12, fontWeight: 600, color: P.bright, fontFamily: MONO,
                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
               }}>
                 {p.name}<span style={{ color: P.dim, fontWeight: 400 }}>{p.ext}</span>
               </div>
-              <div style={{ fontSize: 7.5, color: P.dim, fontFamily: MONO, marginTop: 1 }}>
+              <div style={{ fontSize: 9, color: P.dim, fontFamily: MONO, marginTop: 1 }}>
                 <span style={{ color: P.green }}>+{p.add}</span>{' '}
                 <span style={{ color: P.red }}>-{p.del}</span>
                 {!p.tested && <span style={{ color: P.red, marginLeft: 4 }}>untested</span>}
               </div>
             </div>
-            <span style={{ fontSize: 12, fontWeight: 800, color: pCrit, fontFamily: MONO }}>
+            <span style={{ fontSize: 14, fontWeight: 800, color: pCrit, fontFamily: MONO }}>
               {p.crit.toFixed(1)}
             </span>
           </div>
@@ -156,7 +156,7 @@ function PlanetsList({ planets, tab, P, onNavigate }: {
       {planets.length === 0 && (
         <div style={{
           padding: '16px 0', textAlign: 'center',
-          fontSize: 9, color: P.dim, fontFamily: MONO,
+          fontSize: 11, color: P.dim, fontFamily: MONO,
         }}>
           {tab === 'active' ? 'All files reviewed' : 'No reviewed files yet'}
         </div>

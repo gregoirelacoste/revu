@@ -11,6 +11,7 @@ interface Props {
   P: Palette;
   isExpanded: boolean;
   onToggle: () => void;
+  onMethodClick?: (name: string) => void;
   // Review
   flags: Record<string, Flag | null>;
   comments: Record<string, Array<{ text: string; t: string }>>;
@@ -23,7 +24,7 @@ interface Props {
 
 export function MethodRow({
   item, isMethod, planetId, maxUsages, P,
-  isExpanded, onToggle,
+  isExpanded, onToggle, onMethodClick,
   flags, comments, actions, toggleFlag, addComment, addAction, toggleAction,
 }: Props) {
   const mc = P[critColor(item.crit) as keyof Palette] as string;
@@ -33,7 +34,10 @@ export function MethodRow({
 
   return (
     <div>
-      <div onClick={onToggle}
+      <div onClick={() => {
+          onMethodClick?.(isExpanded ? '' : item.name);
+          onToggle();
+        }}
         style={{
           display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px',
           borderLeft: `2px solid ${mc}${item.crit >= 7 ? 'aa' : '44'}`,
@@ -42,26 +46,26 @@ export function MethodRow({
           transition: 'background 0.1s',
         }}>
         <span style={{
-          fontSize: 7, fontWeight: 800, width: 8,
+          fontSize: 8, fontWeight: 800, width: 8,
           color: item.status === 'new' ? P.green : item.status === 'mod' ? P.orange : item.impacted ? P.orange : P.dim,
         }}>
           {item.status === 'new' ? '+' : item.status === 'mod' ? '~' : item.impacted ? '⚡' : '·'}
         </span>
         <span style={{
-          fontSize: 6, fontWeight: 700, fontFamily: MONO, padding: '0 3px', borderRadius: 2,
+          fontSize: 7.5, fontWeight: 700, fontFamily: MONO, padding: '0 3px', borderRadius: 2,
           background: item.httpVerb ? `${P.cyan}10` : item.isType ? `${P.purple}10` : isMethod ? `${P.blue}10` : `${P.orange}10`,
           color: item.httpVerb ? P.cyan : item.isType ? P.purple : isMethod ? P.blue : P.orange,
         }}>
           {item.httpVerb || (item.isType ? 'T' : isMethod ? 'fn' : 'ct')}
         </span>
         <span style={{
-          flex: 1, fontSize: 9.5, fontFamily: MONO,
+          flex: 1, fontSize: 11, fontFamily: MONO,
           color: item.crit >= 7 ? P.white : P.bright,
           fontWeight: item.crit >= 7 ? 700 : 400,
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         }}>{item.name}</span>
         {item.sigChanged && (
-          <span style={{ fontSize: 7, color: P.red, fontFamily: MONO, fontWeight: 700 }}>⚠sig</span>
+          <span style={{ fontSize: 8.5, color: P.red, fontFamily: MONO, fontWeight: 700 }}>⚠sig</span>
         )}
         {item.tested === false && item.crit >= 5 && (
           <span style={{ width: 5, height: 5, borderRadius: '50%', background: `${P.red}66`, flexShrink: 0 }} />
@@ -70,11 +74,11 @@ export function MethodRow({
         <div style={{ width: 22, height: 2, background: P.border, borderRadius: 1, overflow: 'hidden', flexShrink: 0 }}>
           <div style={{ width: `${barW}%`, height: '100%', background: (item.usages || 0) >= 5 ? P.cyan : P.dim, borderRadius: 1 }} />
         </div>
-        <span style={{ fontSize: 6, color: P.dim, fontFamily: MONO }}>{item.usages}×</span>
-        <span style={{ fontSize: 9.5, fontWeight: 800, color: mc, fontFamily: MONO }}>{item.crit.toFixed(1)}</span>
+        <span style={{ fontSize: 7.5, color: P.dim, fontFamily: MONO }}>{item.usages}×</span>
+        <span style={{ fontSize: 11, fontWeight: 800, color: mc, fontFamily: MONO }}>{item.crit.toFixed(1)}</span>
         {item.diff?.length > 0 && (
           <span style={{
-            fontSize: 7, color: P.dim,
+            fontSize: 8.5, color: P.dim,
             transform: isExpanded ? 'rotate(90deg)' : 'none',
             transition: 'transform 0.15s',
           }}>›</span>

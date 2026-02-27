@@ -1,22 +1,25 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import type { FocusTarget, Palette, FlatPlanet, EdgeData, ReviewState } from '../types';
+import type { FocusTarget, Palette, FlatPlanet, EdgeData, GalaxyData, ReviewState } from '../types';
 import { PlanetDetail } from './PlanetDetail';
 import { GalaxyDetail } from './GalaxyDetail';
 import { SystemDetail } from './SystemDetail';
 import { EdgeDetail } from './EdgeDetail';
+import { UniverseDetail } from './UniverseDetail';
 
 interface Props {
-  focus: FocusTarget;
+  focus: FocusTarget | null;
   P: Palette;
   edges: EdgeData[];
   allPlanets: FlatPlanet[];
+  galaxies: GalaxyData[];
   width: number;
   setWidth: (w: number) => void;
   review: ReviewState;
   onNavigate: (target: FocusTarget) => void;
+  onMethodHighlight?: (h: { planetId: string; methodName: string } | null) => void;
 }
 
-export function SidePanel({ focus, P, edges, allPlanets, width, setWidth, review, onNavigate }: Props) {
+export function SidePanel({ focus, P, edges, allPlanets, galaxies, width, setWidth, review, onNavigate, onMethodHighlight }: Props) {
   const [resizing, setResizing] = useState(false);
   const dragRef = useRef<{ startX: number; startW: number } | null>(null);
 
@@ -59,22 +62,28 @@ export function SidePanel({ focus, P, edges, allPlanets, width, setWidth, review
         }}
       />
       <div style={{ flex: 1, overflow: 'auto', minWidth: 0 }}>
-        {focus.kind === 'planet' && (
+        {!focus && (
+          <UniverseDetail
+            galaxies={galaxies} edges={edges} allPlanets={allPlanets}
+            P={P} review={review} onNavigate={onNavigate} />
+        )}
+        {focus?.kind === 'planet' && (
           <PlanetDetail
             planet={focus.planet} P={P} review={review}
-            edges={edges} allPlanets={allPlanets} onNavigate={onNavigate} />
+            edges={edges} allPlanets={allPlanets} onNavigate={onNavigate}
+            onMethodHighlight={onMethodHighlight} />
         )}
-        {focus.kind === 'galaxy' && (
+        {focus?.kind === 'galaxy' && (
           <GalaxyDetail
             galaxy={focus.galaxy} P={P} review={review}
             edges={edges} allPlanets={allPlanets} onNavigate={onNavigate} />
         )}
-        {focus.kind === 'system' && (
+        {focus?.kind === 'system' && (
           <SystemDetail
             system={focus.system} galaxy={focus.galaxy} P={P} review={review}
             edges={edges} allPlanets={allPlanets} onNavigate={onNavigate} />
         )}
-        {focus.kind === 'edge' && (
+        {focus?.kind === 'edge' && (
           <EdgeDetail
             edge={focus.edge} fromPlanet={focus.fromPlanet} toPlanet={focus.toPlanet}
             P={P} onNavigate={onNavigate} />

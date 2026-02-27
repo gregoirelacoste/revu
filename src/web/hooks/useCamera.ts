@@ -15,11 +15,37 @@ export function useCamera() {
   const ref = useRef<HTMLDivElement>(null);
   const [cam, setCam] = useState<Camera>(INITIAL_CAM);
   const [drag, setDrag] = useState<{ x: number; y: number } | null>(null);
+  const [spaceHeld, setSpaceHeld] = useState(false);
   const dragRef = useRef(drag);
   dragRef.current = drag;
 
   const camRef = useRef(cam);
   camRef.current = cam;
+
+  const spaceRef = useRef(false);
+  spaceRef.current = spaceHeld;
+
+  // Spacebar hold-to-drag
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.code === 'Space' && !e.repeat && !(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)) {
+        e.preventDefault();
+        setSpaceHeld(true);
+      }
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.code === 'Space') {
+        e.preventDefault();
+        setSpaceHeld(false);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+    };
+  }, []);
 
   const handleWheel = useCallback((e: WheelEvent) => {
     e.preventDefault();
@@ -43,18 +69,29 @@ export function useCamera() {
     return () => el.removeEventListener('wheel', handleWheel);
   }, [handleWheel]);
 
+  const didMoveRef = useRef(false);
+  const didDragRef = useRef(false);
+
   const onMouseDown = useCallback((e: React.MouseEvent) => {
-    if (!(e.target as HTMLElement).closest('[data-clickable]')) {
+    if (spaceRef.current || !(e.target as HTMLElement).closest('[data-clickable]')) {
+      didMoveRef.current = false;
       setDrag({ x: e.clientX - camRef.current.x, y: e.clientY - camRef.current.y });
     }
   }, []);
 
   const onMouseMove = useCallback((e: React.MouseEvent) => {
     const d = dragRef.current;
-    if (d) setCam(c => ({ ...c, x: e.clientX - d.x, y: e.clientY - d.y }));
+    if (d) {
+      didMoveRef.current = true;
+      setCam(c => ({ ...c, x: e.clientX - d.x, y: e.clientY - d.y }));
+    }
   }, []);
 
-  const onMouseUp = useCallback(() => setDrag(null), []);
+  const onMouseUp = useCallback(() => {
+    didDragRef.current = didMoveRef.current;
+    didMoveRef.current = false;
+    setDrag(null);
+  }, []);
 
   const zoomTo = useCallback((planet: FlatPlanet) => {
     const rect = ref.current?.getBoundingClientRect();
@@ -69,7 +106,7 @@ export function useCamera() {
   const zoomOut = useCallback(() => setCam(INITIAL_CAM), []);
 
   return {
-    ref, cam, drag,
+    ref, cam, drag, spaceHeld, didDragRef,
     handlers: { onMouseDown, onMouseMove, onMouseUp, onMouseLeave: onMouseUp },
     zoomTo, zoomOut,
   };

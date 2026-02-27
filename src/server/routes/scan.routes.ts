@@ -16,9 +16,10 @@ import type {
 export function createScanRouter(rootDir: string): Router {
   const router = Router();
 
-  router.get('/scan', async (_req, res) => {
+  router.get('/scan', async (req, res) => {
     try {
-      const result = await scanUniverse(rootDir);
+      const baseBranch = typeof req.query.base === 'string' ? req.query.base : 'develop';
+      const result = await scanUniverse(rootDir, baseBranch);
       res.json(result);
     } catch (err) {
       console.error('Scan error:', err);
@@ -31,8 +32,8 @@ export function createScanRouter(rootDir: string): Router {
 
 // ── Main orchestrator ──
 
-async function scanUniverse(rootDir: string): Promise<ScanResponse> {
-  const repos = await scanRepos(rootDir);
+async function scanUniverse(rootDir: string, baseBranch = 'develop'): Promise<ScanResponse> {
+  const repos = await scanRepos(rootDir, baseBranch);
   if (repos.length === 0) return { galaxies: [], edges: [] };
 
   const allParsedFiles: ParsedFile[] = [];
@@ -71,9 +72,11 @@ async function processRepo(repo: RepoInfo) {
 
   if (dirMap.size === 0) return null;
 
+  const dirAffinity = computeDirAffinity(parsedFiles);
+
   return {
     parsedFiles,
-    layoutInput: { repoName: repo.name, branch: repo.currentBranch, directories: dirMap },
+    layoutInput: { repoName: repo.name, branch: repo.currentBranch, directories: dirMap, dirAffinity },
   };
 }
 
@@ -128,6 +131,37 @@ async function buildPlanetEntry(
   });
 }
 
+// ── Dir affinity (inter-directory links) ──
+
+function computeDirAffinity(parsedFiles: ParsedFile[]): Map<string, Map<string, number>> {
+  const affinity = new Map<string, Map<string, number>>();
+
+  for (const pf of parsedFiles) {
+    const fromDir = dirname(pf.path);
+    // Collect target strings from imports (.source) and injections (.typeName)
+    const targets: string[] = [
+      ...(pf.imports ?? []).map(i => i.source),
+      ...(pf.injections ?? []).map(i => i.typeName),
+    ];
+    for (const target of targets) {
+      const targetFile = parsedFiles.find(f => f.path.includes(target) || f.path.endsWith(`${target}.ts`));
+      if (!targetFile) continue;
+      const toDir = dirname(targetFile.path);
+      if (fromDir === toDir) continue;
+
+      if (!affinity.has(fromDir)) affinity.set(fromDir, new Map());
+      const inner = affinity.get(fromDir)!;
+      inner.set(toDir, (inner.get(toDir) ?? 0) + 1);
+
+      if (!affinity.has(toDir)) affinity.set(toDir, new Map());
+      const innerRev = affinity.get(toDir)!;
+      innerRev.set(fromDir, (innerRev.get(fromDir) ?? 0) + 1);
+    }
+  }
+
+  return affinity;
+}
+
 // ── Crit map builder ──
 
 function buildFileCritMap(galaxies: { systems: { planets: { id: string; crit: number }[] }[] }[]): Map<string, number> {
@@ -162,7 +196,7 @@ function buildMethodData(
       name: m.name, status, crit, usages: 1, tested: false,
       sigChanged, httpVerb: m.httpVerb, diff: methodDiff,
     };
-  }).filter(m => m.status !== 'unch' || m.sigChanged);
+  });
 }
 
 function buildConstantData(pf: ParsedFile, diff: FileDiff, fileCrit: number): MethodData[] {

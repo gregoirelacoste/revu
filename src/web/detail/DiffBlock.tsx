@@ -25,7 +25,7 @@ export function DiffBlock({ diff, P }: Props) {
     <div style={{
       borderRadius: 5, overflow: 'hidden',
       border: `1px solid ${P.border}`,
-      fontSize: 9.5, fontFamily: MONO, marginBottom: 6,
+      fontSize: 11, fontFamily: MONO, marginBottom: 6,
     }}>
       {diff.map((line, idx) => (
         <DiffLine key={idx} line={line}

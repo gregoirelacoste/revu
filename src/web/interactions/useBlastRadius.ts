@@ -20,6 +20,15 @@ export function useBlastRadius(
   return useMemo(() => {
     if (!focus) return EMPTY;
 
+    if (focus.kind === 'edge') {
+      return {
+        connected: new Set([focus.edge.from, focus.edge.to]),
+        l1: new Set<string>(),
+        l2: new Set<string>(),
+        edgeSet: new Set([`${focus.edge.from}|${focus.edge.to}`]),
+      };
+    }
+
     const seedIds = getSeedIds(focus, allPlanets);
     if (seedIds.length === 0) return EMPTY;
 

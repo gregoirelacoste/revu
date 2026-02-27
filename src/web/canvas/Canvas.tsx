@@ -2,7 +2,7 @@ import { useMemo, useCallback, useEffect } from 'react';
 import type { GalaxyData, EdgeData, Palette, FocusTarget, FlatPlanet } from '../types';
 import { flattenPlanets, planetMap as buildPlanetMap } from '../utils/geometry';
 import { useCamera } from '../hooks/useCamera';
-import { useBlastRadius } from '../hooks/useBlastRadius';
+import { useBlastRadius } from '../interactions/useBlastRadius';
 import { Galaxy } from './Galaxy';
 import { EdgeLayer } from './EdgeLayer';
 import { Planet } from './Planet';
@@ -16,13 +16,16 @@ interface CanvasProps {
   onCanvasClick: () => void;
   setZoomOutFn: (fn: () => void) => void;
   archivedIds: Set<string>;
+  highlightedPlanets: Set<string>;
+  highlightedEdges: Set<string>;
 }
 
 export function Canvas({
   galaxies, edges, P,
   focus, setFocus, onCanvasClick, setZoomOutFn, archivedIds,
+  highlightedPlanets, highlightedEdges,
 }: CanvasProps) {
-  const { ref, cam, drag, handlers, zoomTo, zoomOut } = useCamera();
+  const { ref, cam, drag, spaceHeld, didDragRef, handlers, zoomTo, zoomOut } = useCamera();
 
   useEffect(() => {
     setZoomOutFn(() => { zoomOut(); });
@@ -63,15 +66,17 @@ export function Canvas({
   }, [allPlanets, setFocus]);
 
   const handleBgClick = useCallback((e: React.MouseEvent) => {
+    if (spaceHeld) return;
+    if (didDragRef.current) { didDragRef.current = false; return; }
     if (!(e.target as HTMLElement).closest('[data-clickable]')) {
       onCanvasClick();
     }
-  }, [onCanvasClick]);
+  }, [onCanvasClick, spaceHeld, didDragRef]);
 
   return (
     <div ref={ref} style={{
       flex: 1, overflow: 'hidden',
-      cursor: drag ? 'grabbing' : 'grab', position: 'relative',
+      cursor: drag ? 'grabbing' : spaceHeld ? 'grab' : 'default', position: 'relative',
     }} {...handlers} onClick={handleBgClick}>
       <div style={{
         position: 'absolute',
@@ -88,6 +93,7 @@ export function Canvas({
 
         <EdgeLayer edges={edges} planetMap={pMap} P={P}
           hasSelection={hasSelection} edgeSet={edgeSet}
+          highlightedEdges={highlightedEdges}
           onEdgeClick={handleEdgeClick} zoomLevel={cam.s} />
 
         {allPlanets.map(planet => (
@@ -97,8 +103,10 @@ export function Canvas({
             isBlastL1={l1.has(planet.id)}
             isBlastL2={l2.has(planet.id)}
             isArchived={archivedIds.has(planet.id)}
+            isMethodHighlighted={highlightedPlanets.has(planet.id)}
             hasSelection={hasSelection}
             zoomLevel={cam.s}
+            isPanning={spaceHeld}
             onClick={handlePlanetClick} />
         ))}
       </div>

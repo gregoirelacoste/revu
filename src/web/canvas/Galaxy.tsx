@@ -33,8 +33,10 @@ export function Galaxy({
       <div data-clickable onClick={handleClick} style={{
         position: 'absolute', left: g.cx - g.rx, top: g.cy - g.ry,
         width: g.rx * 2, height: g.ry * 2, borderRadius: '50%',
-        background: `${c}${isFocused ? '0c' : P.gBg}`,
-        border: `${isFocused ? 2 : 1.5}px solid ${c}${isFocused ? '30' : '18'}`,
+        background: isFocused
+          ? `${c}0c`
+          : `radial-gradient(ellipse at center, ${c}${P.gBg}, transparent)`,
+        border: `${isFocused ? 2 : 1.5}px solid ${c}${isFocused ? '30' : P.gBo}`,
         cursor: 'pointer',
         transition: 'border-color 0.2s, background 0.2s',
       }} />
@@ -44,14 +46,14 @@ export function Galaxy({
         pointerEvents: 'none',
       }}>
         <div style={{
-          fontSize: 13, fontWeight: 900, fontFamily: SANS, color: `${c}aa`,
-          letterSpacing: 1.5, textTransform: 'uppercase',
-          textShadow: `0 0 20px ${c}30`,
+          fontSize: 19, fontWeight: 900, fontFamily: SANS, color: `${c}cc`,
+          letterSpacing: 2, textTransform: 'uppercase',
+          textShadow: `0 0 20px ${c}50`,
         }}>
           {g.label}
         </div>
         <div style={{
-          fontSize: 9, fontWeight: 500, fontFamily: MONO, color: `${c}55`,
+          fontSize: 10, fontWeight: 500, fontFamily: MONO, color: `${c}55`,
           marginTop: 2,
         }}>
           {g.branch}

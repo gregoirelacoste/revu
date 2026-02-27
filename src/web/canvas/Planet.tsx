@@ -3,7 +3,7 @@ import type { FlatPlanet, Palette } from '../types';
 import { MONO, SANS, critColor, BADGE_ICONS } from '../theme/colors';
 import { baseRadius } from '../utils/geometry';
 import { PlanetHoverTags } from './PlanetHoverTags';
-import { PlanetMethods } from './PlanetMethods';
+
 
 interface PlanetProps {
   planet: FlatPlanet;
@@ -13,8 +13,10 @@ interface PlanetProps {
   isBlastL1: boolean;
   isBlastL2: boolean;
   isArchived: boolean;
+  isMethodHighlighted: boolean;
   hasSelection: boolean;
   zoomLevel: number;
+  isPanning: boolean;
   onClick: (id: string) => void;
 }
 
@@ -34,7 +36,7 @@ function computeOpacity(
 
 export function Planet({
   planet, P, isFocused, isVisible, isBlastL1, isBlastL2,
-  isArchived, hasSelection, zoomLevel, onClick,
+  isArchived, isMethodHighlighted, hasSelection, zoomLevel, isPanning, onClick,
 }: PlanetProps) {
   const [isHovered, setIsHovered] = useState(false);
   const bR = baseRadius(planet.crit);
@@ -55,13 +57,15 @@ export function Planet({
   const blastBorder = isBlastL1 ? `${P.orange}60` : isBlastL2 ? `${P.orange}25` : null;
 
   const handleClick = useCallback((e: React.MouseEvent) => {
+    if (isPanning) return;
     e.stopPropagation();
     onClick(planet.id);
-  }, [planet.id, onClick]);
+  }, [planet.id, onClick, isPanning]);
 
   return (
     <div data-clickable style={{
       position: 'absolute', left: planet.ax - bR, top: planet.ay - bR,
+      pointerEvents: isPanning ? 'none' : 'auto',
       opacity,
       transition: 'opacity 0.25s',
       zIndex: isFocused ? 20 : isHovered ? 10 : 1,
@@ -74,6 +78,17 @@ export function Planet({
           position: 'absolute', left: -4, top: -4,
           width: bR * 2 + 8, height: bR * 2 + 8,
           borderRadius: '50%', border: `2px solid ${blastBorder}`,
+          pointerEvents: 'none',
+        }} />
+      )}
+
+      {/* Method highlight ring */}
+      {isMethodHighlighted && (
+        <div style={{
+          position: 'absolute', left: -4, top: -4,
+          width: bR * 2 + 8, height: bR * 2 + 8,
+          borderRadius: '50%', border: `2px solid ${P.cyan}80`,
+          boxShadow: `0 0 14px ${P.cyan}35`,
           pointerEvents: 'none',
         }} />
       )}
@@ -146,10 +161,6 @@ export function Planet({
         <PlanetHoverTags items={items} tested={planet.tested} baseR={bR} P={P} />
       )}
 
-      {/* Zoom-revealed methods */}
-      {!isFocused && zoomLevel >= 0.85 && items.length > 0 && (
-        <PlanetMethods items={items} baseR={bR} zoomLevel={zoomLevel} P={P} />
-      )}
     </div>
   );
 }

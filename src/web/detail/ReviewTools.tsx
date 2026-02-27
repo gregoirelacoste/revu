@@ -28,7 +28,7 @@ export function ReviewTools({
         {FLAGS.map(ft => (
           <button key={ft.key} onClick={() => toggleFlag(mKey, ft.key)} data-ui="true"
             style={{
-              padding: '2px 5px', borderRadius: 3, fontSize: 7.5, fontFamily: SANS,
+              padding: '2px 5px', borderRadius: 3, fontSize: 9, fontFamily: SANS,
               background: mFlag === ft.key ? `${P[ft.c as keyof Palette]}12` : 'transparent',
               border: `1px solid ${mFlag === ft.key ? `${P[ft.c as keyof Palette]}40` : P.border}`,
               color: mFlag === ft.key ? P[ft.c as keyof Palette] as string : P.dim,
@@ -46,10 +46,10 @@ export function ReviewTools({
             <div key={ai} onClick={() => toggleAction(mKey, ai)} data-ui="true"
               style={{
                 display: 'flex', alignItems: 'center', gap: 4,
-                padding: '2px 0', cursor: 'pointer', fontSize: 8.5,
+                padding: '2px 0', cursor: 'pointer', fontSize: 10,
                 fontFamily: SANS, color: a.done ? P.dim : P.text,
               }}>
-              <span style={{ fontSize: 9, color: a.done ? P.green : P.dim }}>
+              <span style={{ fontSize: 10.5, color: a.done ? P.green : P.dim }}>
                 {a.done ? '☑' : '☐'}
               </span>
               <span style={{ textDecoration: a.done ? 'line-through' : 'none' }}>
@@ -64,12 +64,12 @@ export function ReviewTools({
           onKeyDown={(e) => { if (e.key === 'Enter') { addAction(mKey, actIn); setActIn(''); } }}
           placeholder="+ action à faire..." data-ui="true"
           style={{
-            flex: 1, padding: '3px 5px', borderRadius: 3, fontSize: 8, fontFamily: SANS,
+            flex: 1, padding: '3px 5px', borderRadius: 3, fontSize: 10, fontFamily: SANS,
             background: P.bg, border: `1px solid ${P.border}`, color: P.bright, outline: 'none',
           }} />
         <button onClick={() => { addAction(mKey, actIn); setActIn(''); }} data-ui="true"
           style={{
-            padding: '3px 6px', borderRadius: 3, fontSize: 7,
+            padding: '3px 6px', borderRadius: 3, fontSize: 8.5,
             background: `${P.orange}15`, border: `1px solid ${P.orange}30`,
             color: P.orange, cursor: 'pointer',
           }}>+</button>
@@ -78,11 +78,11 @@ export function ReviewTools({
       {/* Comments */}
       {mComments.map((c, ci) => (
         <div key={ci} style={{
-          fontSize: 8.5, color: P.text, fontFamily: SANS, padding: '2px 5px',
+          fontSize: 10, color: P.text, fontFamily: SANS, padding: '2px 5px',
           background: `${P.cyan}04`, borderRadius: 3, marginBottom: 2,
           borderLeft: `2px solid ${P.cyan}25`,
         }}>
-          <span style={{ color: P.dim, fontSize: 7, fontFamily: MONO }}>{c.t}</span> {c.text}
+          <span style={{ color: P.dim, fontSize: 8.5, fontFamily: MONO }}>{c.t}</span> {c.text}
         </div>
       ))}
       <div style={{ display: 'flex', gap: 2 }}>
@@ -90,12 +90,12 @@ export function ReviewTools({
           onKeyDown={(e) => { if (e.key === 'Enter') { addComment(mKey, cIn); setCIn(''); } }}
           placeholder="commentaire..." data-ui="true"
           style={{
-            flex: 1, padding: '3px 5px', borderRadius: 3, fontSize: 8, fontFamily: SANS,
+            flex: 1, padding: '3px 5px', borderRadius: 3, fontSize: 10, fontFamily: SANS,
             background: P.bg, border: `1px solid ${P.border}`, color: P.bright, outline: 'none',
           }} />
         <button onClick={() => { addComment(mKey, cIn); setCIn(''); }} data-ui="true"
           style={{
-            padding: '3px 6px', borderRadius: 3, fontSize: 7,
+            padding: '3px 6px', borderRadius: 3, fontSize: 8.5,
             background: P.cyan, border: 'none', color: '#000',
             cursor: 'pointer', fontWeight: 700,
           }}>↵</button>

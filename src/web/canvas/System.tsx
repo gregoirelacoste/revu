@@ -29,7 +29,7 @@ export function System({ system: s, galaxy: g, P, isFocused, onSystemClick }: Sy
           position: 'absolute', left: sx - s.r, top: sy - s.r,
           width: s.r * 2, height: s.r * 2, borderRadius: '50%',
           background: `${c}${isFocused ? '0a' : P.sBg}`,
-          border: `${isFocused ? 2 : 1}px dashed ${c}${isFocused ? '35' : hov ? '25' : '12'}`,
+          border: `${isFocused ? 2 : 1}px dashed ${c}${isFocused ? '35' : hov ? '25' : P.sBo}`,
           cursor: 'pointer',
           transition: 'border-color 0.2s, background 0.2s',
         }} />

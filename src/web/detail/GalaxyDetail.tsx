@@ -87,13 +87,13 @@ function GalaxyHeader({ g, c, P }: { g: GalaxyData; c: string; P: Palette }) {
       padding: '14px 14px 10px', borderBottom: `1px solid ${P.border}`,
       background: `${c}06`,
     }}>
-      <div style={{ fontSize: 8, fontWeight: 700, color: `${c}88`, fontFamily: MONO, letterSpacing: 2, marginBottom: 2 }}>
+      <div style={{ fontSize: 10, fontWeight: 700, color: `${c}88`, fontFamily: MONO, letterSpacing: 2, marginBottom: 2 }}>
         GALAXY
       </div>
-      <div style={{ fontSize: 15, fontWeight: 900, color: c, fontFamily: SANS, letterSpacing: 1 }}>
+      <div style={{ fontSize: 18, fontWeight: 900, color: c, fontFamily: SANS, letterSpacing: 1 }}>
         {g.label}
       </div>
-      <div style={{ fontSize: 9, color: P.dim, fontFamily: MONO, marginTop: 2 }}>
+      <div style={{ fontSize: 11, color: P.dim, fontFamily: MONO, marginTop: 2 }}>
         branch: {g.branch}
       </div>
     </div>
@@ -106,7 +106,7 @@ function SystemsList({ g, galaxyPlanets, P, onNavigate }: {
 }) {
   return (
     <div style={{ padding: '8px 14px', borderBottom: `1px solid ${P.border}` }}>
-      <div style={{ fontSize: 8, fontWeight: 700, color: P.dim, fontFamily: MONO, marginBottom: 6, letterSpacing: 1 }}>
+      <div style={{ fontSize: 10, fontWeight: 700, color: P.dim, fontFamily: MONO, marginBottom: 6, letterSpacing: 1 }}>
         SYSTEMS ({g.systems.length})
       </div>
       {g.systems.map(s => {
@@ -128,14 +128,14 @@ function SystemsList({ g, galaxyPlanets, P, onNavigate }: {
             }}
             {...hoverBg(`${P.border}44`)}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontSize: 10, fontWeight: 700, color: P.bright, fontFamily: MONO, flex: 1 }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: P.bright, fontFamily: MONO, flex: 1 }}>
                 {s.label}
               </span>
-              <span style={{ fontSize: 10, fontWeight: 800, color: sc, fontFamily: MONO }}>
+              <span style={{ fontSize: 12, fontWeight: 800, color: sc, fontFamily: MONO }}>
                 {sysCrit.toFixed(1)}
               </span>
             </div>
-            <div style={{ fontSize: 8, color: P.dim, fontFamily: MONO, marginTop: 2 }}>
+            <div style={{ fontSize: 10, color: P.dim, fontFamily: MONO, marginTop: 2 }}>
               {sysPlanets.length} files · <span style={{ color: P.green }}>+{sysAdd}</span> <span style={{ color: P.red }}>-{sysDel}</span>
             </div>
           </div>
@@ -157,20 +157,20 @@ function PlanetsList({ planets, tab, P, onNavigate }: {
           style={{
             display: 'flex', alignItems: 'center', gap: 6,
             padding: '3px 6px', marginBottom: 1, borderRadius: 4,
-            cursor: 'pointer', fontSize: 9, fontFamily: MONO,
+            cursor: 'pointer', fontSize: 11, fontFamily: MONO,
           }}
           {...hoverBg(`${P.border}44`)}>
-          <span style={{ fontWeight: 800, color: critPc(p.crit, P), fontSize: 10, width: 28 }}>
+          <span style={{ fontWeight: 800, color: critPc(p.crit, P), fontSize: 12, width: 28 }}>
             {p.crit.toFixed(1)}
           </span>
           <span style={{ color: P.bright, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {p.name}
           </span>
-          <span style={{ color: P.dim, fontSize: 7 }}>{p.type}</span>
+          <span style={{ color: P.dim, fontSize: 9 }}>{p.type}</span>
         </div>
       ))}
       {planets.length === 0 && (
-        <div style={{ padding: '16px 0', textAlign: 'center', fontSize: 9, color: P.dim, fontFamily: MONO }}>
+        <div style={{ padding: '16px 0', textAlign: 'center', fontSize: 11, color: P.dim, fontFamily: MONO }}>
           {tab === 'active' ? 'All files reviewed' : 'No reviewed files yet'}
         </div>
       )}

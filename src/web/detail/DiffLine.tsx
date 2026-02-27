@@ -30,7 +30,7 @@ export function DiffLine({ line, pairedLine, P }: Props) {
     }}>
       <span style={{
         width: 14, textAlign: 'center', color: cl[line.t],
-        fontWeight: 700, flexShrink: 0, fontSize: 8, lineHeight: '17px',
+        fontWeight: 700, flexShrink: 0, fontSize: 9.5, lineHeight: '17px',
       }}>{px[line.t]}</span>
       <span style={{ whiteSpace: 'pre', paddingRight: 6, lineHeight: '17px' }}>
         {tokens ? tokens.map((tk, i) => (

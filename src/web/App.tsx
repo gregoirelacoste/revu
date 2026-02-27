@@ -2,6 +2,8 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import type { ScanResponse, FocusTarget } from './types';
 import { DARK, LIGHT, SANS } from './theme/colors';
 import { useReview } from './hooks/useReview';
+import { useFocusHistory } from './interactions/useFocusHistory';
+import { useMethodHighlight } from './interactions/useMethodHighlight';
 import { Header } from './ui/Header';
 import { Canvas } from './canvas/Canvas';
 import { SidePanel } from './detail/SidePanel';
@@ -13,14 +15,21 @@ export default function App() {
   const [data, setData] = useState<ScanResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [focus, setFocus] = useState<FocusTarget | null>(null);
+  const { focus, setFocus, back, forward, canGoBack, canGoForward } = useFocusHistory();
+  const [baseBranch, setBaseBranch] = useState('develop');
   const [panelWidth, setPanelWidth] = useState(400);
   const zoomOutRef = useRef<(() => void) | null>(null);
   const review = useReview();
+  const [highlightMethod, setHighlightMethod] = useState<{ planetId: string; methodName: string } | null>(null);
+  const { highlightedPlanets, highlightedEdges } = useMethodHighlight(
+    data?.edges ?? [], highlightMethod,
+  );
 
   useEffect(() => {
+    setLoading(true);
+    setError(null);
     const ctrl = new AbortController();
-    fetch('/api/scan', { signal: ctrl.signal })
+    fetch(`/api/scan?base=${encodeURIComponent(baseBranch)}`, { signal: ctrl.signal })
       .then(r => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json();
@@ -30,7 +39,7 @@ export default function App() {
         if (e.name !== 'AbortError') { setError(e.message); setLoading(false); }
       });
     return () => ctrl.abort();
-  }, []);
+  }, [baseBranch]);
 
   const allPlanets = useMemo(
     () => data ? flattenPlanets(data.galaxies) : [],
@@ -42,14 +51,19 @@ export default function App() {
     [allPlanets, review.flags],
   );
 
+  const handleNavigate = useCallback((target: FocusTarget | null) => {
+    setHighlightMethod(null);
+    setFocus(target);
+  }, [setFocus]);
+
   const handleZoomOut = useCallback(() => {
     zoomOutRef.current?.();
-    setFocus(null);
-  }, []);
+    handleNavigate(null);
+  }, [handleNavigate]);
 
   const handleCanvasClick = useCallback(() => {
-    setFocus(null);
-  }, []);
+    handleNavigate(null);
+  }, [handleNavigate]);
 
   const setZoomOutFn = useCallback((fn: () => void) => {
     zoomOutRef.current = fn;
@@ -100,22 +114,27 @@ export default function App() {
     }}>
       <Header P={P} dark={dark} setDark={setDark}
         focus={focus} zoomOut={handleZoomOut}
-        reviewed={reviewed} total={allPlanets.length} />
+        reviewed={reviewed} total={allPlanets.length}
+        baseBranch={baseBranch} setBaseBranch={setBaseBranch}
+        canGoBack={canGoBack} canGoForward={canGoForward}
+        onBack={back} onForward={forward} />
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
         <Canvas
           galaxies={data.galaxies} edges={data.edges} P={P}
-          focus={focus} setFocus={setFocus}
+          focus={focus} setFocus={handleNavigate}
           onCanvasClick={handleCanvasClick}
           setZoomOutFn={setZoomOutFn}
-          archivedIds={review.archivedIds} />
-        {focus && (
-          <SidePanel
-            focus={focus} P={P}
-            edges={data.edges} allPlanets={allPlanets}
-            width={panelWidth} setWidth={setPanelWidth}
-            review={review}
-            onNavigate={setFocus} />
-        )}
+          archivedIds={review.archivedIds}
+          highlightedPlanets={highlightedPlanets}
+          highlightedEdges={highlightedEdges} />
+        <SidePanel
+          focus={focus} P={P}
+          edges={data.edges} allPlanets={allPlanets}
+          galaxies={data.galaxies}
+          width={panelWidth} setWidth={setPanelWidth}
+          review={review}
+          onNavigate={handleNavigate}
+          onMethodHighlight={setHighlightMethod} />
       </div>
     </div>
   );
