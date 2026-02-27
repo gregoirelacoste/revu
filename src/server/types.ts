@@ -2,7 +2,8 @@
 
 export type FileType =
   | 'controller' | 'service' | 'module' | 'component' | 'guard'
-  | 'dto' | 'interceptor' | 'pipe' | 'spec' | 'html' | 'scss' | 'unknown';
+  | 'dto' | 'model' | 'interceptor' | 'pipe' | 'spec'
+  | 'html' | 'scss' | 'css' | 'unknown';
 
 export type Flag = 'ok' | 'bug' | 'test' | 'question';
 export type MethodStatus = 'new' | 'mod' | 'unch';

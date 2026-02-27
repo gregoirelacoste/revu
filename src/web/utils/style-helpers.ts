@@ -13,7 +13,7 @@ export function critPc(crit: number, P: Palette): string {
 
 /** Get badge icon with fallback */
 export function getBadgeIcon(type: string) {
-  return BADGE_ICONS[type] ?? { i: '?', c: 'dim' };
+  return BADGE_ICONS[type] ?? { i: '?', c: 'dim', shape: 'circle' as const };
 }
 
 /** Inline hover handlers for background color */

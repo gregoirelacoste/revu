@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { join, dirname, extname, basename } from 'node:path';
 import { scanRepos } from '../scanner/repo-scanner.js';
 import { computeDiff, getFileAtBranch } from '../scanner/diff-parser.js';
-import { classifyFile, isDisplayableFile } from '../analyzer/file-classifier.js';
+import { classifyFile, isDisplayableFile, isTypeScriptFile } from '../analyzer/file-classifier.js';
 import { parseTypeScript } from '../analyzer/ast-parser.js';
 import { detectLinks } from '../analyzer/link-detector.js';
 import { computeFileCriticality, computeMethodCriticality } from '../scoring/criticality.js';
@@ -90,12 +90,22 @@ async function parseRepoFiles(repo: RepoInfo, diffs: FileDiff[]): Promise<Parsed
     const code = await readFile(fullPath, 'utf-8').catch(() => null);
     if (!code) continue;
 
-    const ast = parseTypeScript(code);
-    parsedFiles.push({
-      path: diff.path, repoName: repo.name, fileType,
-      methods: ast.methods, constants: ast.constants,
-      imports: ast.imports, injections: ast.injections,
-    });
+    if (isTypeScriptFile(diff.path)) {
+      const ast = parseTypeScript(code);
+      parsedFiles.push({
+        path: diff.path, repoName: repo.name, fileType,
+        methods: ast.methods, constants: ast.constants,
+        imports: ast.imports, injections: ast.injections,
+      });
+    } else {
+      // HTML/CSS/SCSS — single constant spanning the whole file for diff display
+      const lineCount = code.split('\n').length;
+      parsedFiles.push({
+        path: diff.path, repoName: repo.name, fileType,
+        methods: [], imports: [], injections: [],
+        constants: [{ name: basename(diff.path), startLine: 1, endLine: lineCount, isType: false }],
+      });
+    }
   }
   return parsedFiles;
 }
@@ -188,7 +198,9 @@ function buildMethodData(
     const oldMethod = oldAst?.methods.find(om => om.name === m.name);
     const isNew = !oldMethod;
     const sigChanged = !isNew && oldMethod.signature !== m.signature;
-    const methodDiff = extractMethodDiff(m.startLine, m.endLine, diff, isNew);
+    const rawDiff = extractMethodDiff(m.startLine, m.endLine, diff, isNew);
+    const formatOnly = !isNew && isFormattingOnly(rawDiff);
+    const methodDiff = formatOnly ? [] : rawDiff;
     const status: MethodStatus = isNew ? 'new' : methodDiff.length > 0 ? 'mod' : 'unch';
     const crit = computeMethodCriticality(fileCrit, 1, 5, sigChanged, pf.path);
 
@@ -201,15 +213,34 @@ function buildMethodData(
 
 function buildConstantData(pf: ParsedFile, diff: FileDiff, fileCrit: number): MethodData[] {
   return pf.constants.map(c => {
-    const constDiff = extractMethodDiff(c.startLine, c.endLine, diff, true);
-    if (constDiff.length === 0) return null;
+    const rawDiff = extractMethodDiff(c.startLine, c.endLine, diff, true);
+    if (rawDiff.length === 0 || isFormattingOnly(rawDiff)) return null;
     return {
       name: c.name, status: 'new' as const,
       crit: Math.round(fileCrit * 0.6 * 10) / 10,
       usages: 1, tested: false, sigChanged: false,
-      isType: c.isType, diff: constDiff,
+      isType: c.isType, diff: rawDiff,
     };
   }).filter(Boolean) as MethodData[];
+}
+
+// ── Formatting filter ──
+
+/** Normalize a line for comparison: collapse whitespace, remove trailing commas/semicolons, normalize quotes */
+function normalizeLine(s: string): string {
+  return s.trim().replace(/\s+/g, ' ').replace(/[;,]$/g, '').replace(/'/g, '"');
+}
+
+/** True if the diff only contains whitespace / formatting changes (no semantic change) */
+function isFormattingOnly(diff: Array<{ t: DiffLineType; c: string }>): boolean {
+  if (diff.length === 0) return true;
+  const adds = diff.filter(d => d.t === 'a').map(d => normalizeLine(d.c));
+  const dels = diff.filter(d => d.t === 'd').map(d => normalizeLine(d.c));
+  if (adds.length === 0 && dels.length === 0) return true;
+  if (adds.length !== dels.length) return false;
+  const sortedAdds = [...adds].sort();
+  const sortedDels = [...dels].sort();
+  return sortedAdds.every((a, i) => a === sortedDels[i]);
 }
 
 // ── Diff extraction ──

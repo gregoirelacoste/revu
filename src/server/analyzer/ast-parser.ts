@@ -17,38 +17,158 @@ export function parseTypeScript(code: string): ASTResult {
 
   let ast: TSESTree.Program;
   try {
-    ast = parse(code, { loc: true, range: true, comment: false, jsx: false });
+    ast = parse(code, { loc: true, range: true, comment: false, jsx: true });
   } catch {
     return { methods, constants, imports, injections };
   }
 
   for (const node of ast.body) {
+    const inner = unwrapExport(node);
+
+    // ── Imports ──
     if (node.type === 'ImportDeclaration') {
       const specifiers = node.specifiers
         .map(s => s.type === 'ImportSpecifier' && s.imported.type === 'Identifier' ? s.imported.name : null)
         .filter(Boolean) as string[];
       const source = typeof node.source.value === 'string' ? node.source.value : '';
       imports.push({ specifiers, source });
+      constants.push({
+        name: `import:${source}`,
+        startLine: node.loc.start.line,
+        endLine: node.loc.end.line,
+        isType: false,
+      });
+      continue;
     }
 
-    if (node.type === 'ExportNamedDeclaration' && node.declaration) {
-      extractDeclaration(node.declaration, constants, methods);
+    // ── Classes ──
+    if (inner.type === 'ClassDeclaration') {
+      extractClass(inner, methods, injections);
+      continue;
     }
 
-    if (node.type === 'ClassDeclaration' || (node.type === 'ExportNamedDeclaration' && node.declaration?.type === 'ClassDeclaration')) {
-      const classNode = node.type === 'ClassDeclaration'
-        ? node
-        : node.declaration as TSESTree.ClassDeclaration;
-      extractClass(classNode, methods, injections);
+    // ── Functions ──
+    if (inner.type === 'FunctionDeclaration') {
+      const name = inner.id?.name ?? 'anonymous';
+      methods.push({
+        name,
+        startLine: node.loc.start.line,
+        endLine: node.loc.end.line,
+        signature: name,
+        decorators: [],
+      });
+      continue;
     }
 
-    if (node.type === 'VariableDeclaration') {
-      extractVariables(node, constants);
+    // ── Enums ──
+    if (inner.type === 'TSEnumDeclaration') {
+      constants.push({
+        name: inner.id.name,
+        startLine: node.loc.start.line,
+        endLine: node.loc.end.line,
+        isType: false,
+      });
+      continue;
     }
+
+    // ── Interfaces ──
+    if (inner.type === 'TSInterfaceDeclaration') {
+      constants.push({
+        name: inner.id.name,
+        startLine: node.loc.start.line,
+        endLine: node.loc.end.line,
+        isType: true,
+      });
+      continue;
+    }
+
+    // ── Type aliases ──
+    if (inner.type === 'TSTypeAliasDeclaration') {
+      constants.push({
+        name: inner.id.name,
+        startLine: node.loc.start.line,
+        endLine: node.loc.end.line,
+        isType: true,
+      });
+      continue;
+    }
+
+    // ── Variables (const, let, var) ──
+    if (inner.type === 'VariableDeclaration') {
+      for (const decl of inner.declarations) {
+        const name = decl.id?.type === 'Identifier' ? decl.id.name : 'var';
+        // Arrow functions / function expressions → method
+        if (decl.init?.type === 'ArrowFunctionExpression' || decl.init?.type === 'FunctionExpression') {
+          methods.push({
+            name,
+            startLine: node.loc.start.line,
+            endLine: node.loc.end.line,
+            signature: name,
+            decorators: [],
+          });
+        } else {
+          constants.push({
+            name,
+            startLine: node.loc.start.line,
+            endLine: node.loc.end.line,
+            isType: false,
+          });
+        }
+      }
+      continue;
+    }
+
+    // ── Expression statements (decorators, calls, assignments) ──
+    if (inner.type === 'ExpressionStatement') {
+      const name = expressionName(inner.expression);
+      constants.push({
+        name,
+        startLine: node.loc.start.line,
+        endLine: node.loc.end.line,
+        isType: false,
+      });
+      continue;
+    }
+
+    // ── Module declarations (declare module, declare global) ──
+    if (inner.type === 'TSModuleDeclaration') {
+      const name = inner.id.type === 'Identifier' ? inner.id.name : 'module';
+      constants.push({
+        name: `module:${name}`,
+        startLine: node.loc.start.line,
+        endLine: node.loc.end.line,
+        isType: true,
+      });
+      continue;
+    }
+
+    // ── Catch-all: any other top-level statement ──
+    constants.push({
+      name: `stmt:${node.type}`,
+      startLine: node.loc.start.line,
+      endLine: node.loc.end.line,
+      isType: false,
+    });
   }
 
   return { methods, constants, imports, injections };
 }
+
+// ── Unwrap export wrappers to get inner declaration ──
+
+function unwrapExport(node: TSESTree.Statement): TSESTree.Statement {
+  if (node.type === 'ExportNamedDeclaration' && node.declaration) {
+    return node.declaration as TSESTree.Statement;
+  }
+  if (node.type === 'ExportDefaultDeclaration' && node.declaration) {
+    if ((node.declaration as TSESTree.Statement).type) {
+      return node.declaration as TSESTree.Statement;
+    }
+  }
+  return node;
+}
+
+// ── Class extraction (methods, constructor, properties) ──
 
 function extractClass(
   node: TSESTree.ClassDeclaration,
@@ -56,11 +176,19 @@ function extractClass(
   injections: ParsedInjection[],
 ) {
   if (!node.body?.body) return;
+  const className = node.id?.name ?? 'Class';
 
   for (const member of node.body.body) {
     if (member.type === 'MethodDefinition' && member.key?.type === 'Identifier') {
       if (member.key.name === 'constructor') {
         extractConstructorInjections(member, injections);
+        methods.push({
+          name: `${className}.constructor`,
+          startLine: member.loc.start.line,
+          endLine: member.loc.end.line,
+          signature: 'constructor',
+          decorators: extractDecorators(member),
+        });
         continue;
       }
       const decorators = extractDecorators(member);
@@ -87,6 +215,17 @@ function extractClass(
         });
       }
     }
+
+    // Static blocks
+    if (member.type === 'StaticBlock') {
+      methods.push({
+        name: `${className}.static`,
+        startLine: member.loc.start.line,
+        endLine: member.loc.end.line,
+        signature: 'static',
+        decorators: [],
+      });
+    }
   }
 }
 
@@ -105,6 +244,22 @@ function extractConstructorInjections(
       }
     }
   }
+}
+
+// ── Helpers ──
+
+function expressionName(expr: TSESTree.Expression): string {
+  if (expr.type === 'CallExpression') {
+    if (expr.callee.type === 'Identifier') return `${expr.callee.name}()`;
+    if (expr.callee.type === 'MemberExpression' && expr.callee.property.type === 'Identifier') {
+      const obj = expr.callee.object.type === 'Identifier' ? expr.callee.object.name : '';
+      return `${obj}.${expr.callee.property.name}()`;
+    }
+  }
+  if (expr.type === 'AssignmentExpression' && expr.left.type === 'MemberExpression') {
+    if (expr.left.property.type === 'Identifier') return expr.left.property.name;
+  }
+  return 'expression';
 }
 
 function extractDecorators(node: TSESTree.MethodDefinition | TSESTree.PropertyDefinition): string[] {
@@ -161,36 +316,4 @@ function formatType(node: TSESTree.TypeNode): string {
   if (node.type === 'TSStringKeyword') return 'string';
   if (node.type === 'TSNumberKeyword') return 'number';
   return 'unknown';
-}
-
-function extractVariables(node: TSESTree.VariableDeclaration, constants: ParsedConstant[]) {
-  if (node.kind !== 'const') return;
-  for (const decl of node.declarations) {
-    if (decl.id?.type === 'Identifier') {
-      constants.push({
-        name: decl.id.name,
-        startLine: node.loc.start.line,
-        endLine: node.loc.end.line,
-        isType: false,
-      });
-    }
-  }
-}
-
-function extractDeclaration(
-  node: TSESTree.ExportDeclaration,
-  constants: ParsedConstant[],
-  methods: ParsedMethod[],
-) {
-  if (node.type === 'TSInterfaceDeclaration' || node.type === 'TSTypeAliasDeclaration') {
-    constants.push({
-      name: node.id.name,
-      startLine: node.loc.start.line,
-      endLine: node.loc.end.line,
-      isType: true,
-    });
-  }
-  if (node.type === 'VariableDeclaration') {
-    extractVariables(node, constants);
-  }
 }

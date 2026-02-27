@@ -19,6 +19,7 @@ export default function App() {
   const [baseBranch, setBaseBranch] = useState('develop');
   const [panelWidth, setPanelWidth] = useState(400);
   const zoomOutRef = useRef<(() => void) | null>(null);
+  const zoomToRef = useRef<((target: FocusTarget) => void) | null>(null);
   const review = useReview();
   const [highlightMethod, setHighlightMethod] = useState<{ planetId: string; methodName: string } | null>(null);
   const { highlightedPlanets, highlightedEdges } = useMethodHighlight(
@@ -51,6 +52,11 @@ export default function App() {
     [allPlanets, review.flags],
   );
 
+  // Zoom whenever focus changes (click, panel nav, history back/forward)
+  useEffect(() => {
+    if (focus) zoomToRef.current?.(focus);
+  }, [focus]);
+
   const handleNavigate = useCallback((target: FocusTarget | null) => {
     setHighlightMethod(null);
     setFocus(target);
@@ -67,6 +73,10 @@ export default function App() {
 
   const setZoomOutFn = useCallback((fn: () => void) => {
     zoomOutRef.current = fn;
+  }, []);
+
+  const setZoomToFn = useCallback((fn: (target: FocusTarget) => void) => {
+    zoomToRef.current = fn;
   }, []);
 
   if (loading) {
@@ -124,6 +134,7 @@ export default function App() {
           focus={focus} setFocus={handleNavigate}
           onCanvasClick={handleCanvasClick}
           setZoomOutFn={setZoomOutFn}
+          setZoomToFn={setZoomToFn}
           archivedIds={review.archivedIds}
           highlightedPlanets={highlightedPlanets}
           highlightedEdges={highlightedEdges} />

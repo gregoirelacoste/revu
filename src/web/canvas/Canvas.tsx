@@ -15,6 +15,7 @@ interface CanvasProps {
   setFocus: (target: FocusTarget | null) => void;
   onCanvasClick: () => void;
   setZoomOutFn: (fn: () => void) => void;
+  setZoomToFn: (fn: (target: FocusTarget) => void) => void;
   archivedIds: Set<string>;
   highlightedPlanets: Set<string>;
   highlightedEdges: Set<string>;
@@ -22,10 +23,10 @@ interface CanvasProps {
 
 export function Canvas({
   galaxies, edges, P,
-  focus, setFocus, onCanvasClick, setZoomOutFn, archivedIds,
+  focus, setFocus, onCanvasClick, setZoomOutFn, setZoomToFn, archivedIds,
   highlightedPlanets, highlightedEdges,
 }: CanvasProps) {
-  const { ref, cam, drag, spaceHeld, didDragRef, handlers, zoomTo, zoomOut } = useCamera();
+  const { ref, cam, drag, spaceHeld, didDragRef, handlers, zoomTo, zoomToPoint, zoomOut, SYSTEM_SCALE, GALAXY_SCALE } = useCamera();
 
   useEffect(() => {
     setZoomOutFn(() => { zoomOut(); });
@@ -40,12 +41,30 @@ export function Canvas({
 
   const { connected, l1, l2, edgeSet } = useBlastRadius(edges, focus, allPlanets);
 
+  const zoomToTarget = useCallback((target: FocusTarget) => {
+    if (target.kind === 'planet') {
+      zoomTo(target.planet);
+    } else if (target.kind === 'system') {
+      // system.cx/cy are relative to galaxy, so add galaxy offset
+      zoomToPoint(target.galaxy.cx + target.system.cx, target.galaxy.cy + target.system.cy, SYSTEM_SCALE);
+    } else if (target.kind === 'galaxy') {
+      zoomToPoint(target.galaxy.cx, target.galaxy.cy, GALAXY_SCALE);
+    } else if (target.kind === 'edge') {
+      const mx = (target.fromPlanet.ax + target.toPlanet.ax) / 2;
+      const my = (target.fromPlanet.ay + target.toPlanet.ay) / 2;
+      zoomToPoint(mx, my, SYSTEM_SCALE);
+    }
+  }, [zoomTo, zoomToPoint, SYSTEM_SCALE, GALAXY_SCALE]);
+
+  useEffect(() => {
+    setZoomToFn((target: FocusTarget) => { zoomToTarget(target); });
+  }, [setZoomToFn, zoomToTarget]);
+
   const handlePlanetClick = useCallback((planetId: string) => {
     const planet = allPlanets.find(p => p.id === planetId);
     if (!planet) return;
-    zoomTo(planet);
     setFocus({ kind: 'planet', id: planet.id, planet });
-  }, [allPlanets, zoomTo, setFocus]);
+  }, [allPlanets, setFocus]);
 
   const handleGalaxyClick = useCallback((galaxy: GalaxyData) => {
     setFocus({ kind: 'galaxy', id: galaxy.id, galaxy });

@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import type { Flag } from '../types';
 
 interface ReviewState {
@@ -7,10 +7,40 @@ interface ReviewState {
   actions: Record<string, Array<{ text: string; done: boolean }>>;
 }
 
+const STORAGE_KEY = 'revu-review';
+const SAVE_DELAY = 500;
+
+function loadState(): ReviewState {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return { flags: {}, comments: {}, actions: {} };
+    const parsed = JSON.parse(raw);
+    return {
+      flags: parsed.flags ?? {},
+      comments: parsed.comments ?? {},
+      actions: parsed.actions ?? {},
+    };
+  } catch {
+    return { flags: {}, comments: {}, actions: {} };
+  }
+}
+
+function saveState(state: ReviewState) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch { /* quota exceeded — ignore */ }
+}
+
 export function useReview() {
-  const [state, setState] = useState<ReviewState>({
-    flags: {}, comments: {}, actions: {},
-  });
+  const [state, setState] = useState<ReviewState>(loadState);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Debounced save to localStorage
+  useEffect(() => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => saveState(state), SAVE_DELAY);
+    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+  }, [state]);
 
   const toggleFlag = useCallback((id: string, key: Flag) => {
     setState(s => ({

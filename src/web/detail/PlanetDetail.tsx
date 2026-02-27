@@ -23,10 +23,25 @@ export function PlanetDetail({ planet, P, review, edges, allPlanets, onNavigate,
   const iconC = pc(ic.c, P);
   const flag = review.flags[planet.id] ?? null;
 
+  // Aggregate import constants into a single summary entry
+  const { mergedConstants, importSummary } = useMemo(() => {
+    const consts = planet.constants ?? [];
+    const imports = consts.filter(c => c.name.startsWith('import:'));
+    const rest = consts.filter(c => !c.name.startsWith('import:'));
+    const changedImports = imports.filter(c => c.status !== 'unch');
+    const summary: MethodData | null = changedImports.length > 0 ? {
+      name: `imports (${changedImports.length} changed)`,
+      status: 'mod', crit: Math.max(...changedImports.map(c => c.crit), 0),
+      usages: 1, tested: false, sigChanged: false, isType: false,
+      diff: changedImports.flatMap(c => c.diff),
+    } : null;
+    return { mergedConstants: rest, importSummary: summary };
+  }, [planet.constants]);
+
   const allItems = useMemo(() =>
-    [...(planet.methods ?? []), ...(planet.constants ?? [])]
+    [...(planet.methods ?? []), ...mergedConstants, ...(importSummary ? [importSummary] : [])]
       .sort((a, b) => b.crit - a.crit),
-    [planet.methods, planet.constants],
+    [planet.methods, mergedConstants, importSummary],
   );
 
   const changedItems = useMemo(() =>

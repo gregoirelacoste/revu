@@ -8,7 +8,9 @@ const ZOOM_IN_FACTOR = 1.12;
 const ZOOM_OUT_FACTOR = 0.89;
 const ZOOM_MIN = 0.1;
 const ZOOM_MAX = 3.5;
-const FOCUS_SCALE = 2;
+const PLANET_SCALE = 2;
+const SYSTEM_SCALE = 1.2;
+const GALAXY_SCALE = 0.6;
 const FOCUS_Y_OFFSET = -40;
 
 export function useCamera() {
@@ -97,9 +99,19 @@ export function useCamera() {
     const rect = ref.current?.getBoundingClientRect();
     if (!rect) return;
     setCam({
-      x: rect.width / 2 - planet.ax * FOCUS_SCALE,
-      y: rect.height / 2 - planet.ay * FOCUS_SCALE + FOCUS_Y_OFFSET,
-      s: FOCUS_SCALE,
+      x: rect.width / 2 - planet.ax * PLANET_SCALE,
+      y: rect.height / 2 - planet.ay * PLANET_SCALE + FOCUS_Y_OFFSET,
+      s: PLANET_SCALE,
+    });
+  }, []);
+
+  const zoomToPoint = useCallback((wx: number, wy: number, scale: number) => {
+    const rect = ref.current?.getBoundingClientRect();
+    if (!rect) return;
+    setCam({
+      x: rect.width / 2 - wx * scale,
+      y: rect.height / 2 - wy * scale + FOCUS_Y_OFFSET,
+      s: scale,
     });
   }, []);
 
@@ -108,6 +120,6 @@ export function useCamera() {
   return {
     ref, cam, drag, spaceHeld, didDragRef,
     handlers: { onMouseDown, onMouseMove, onMouseUp, onMouseLeave: onMouseUp },
-    zoomTo, zoomOut,
+    zoomTo, zoomToPoint, zoomOut, SYSTEM_SCALE, GALAXY_SCALE,
   };
 }

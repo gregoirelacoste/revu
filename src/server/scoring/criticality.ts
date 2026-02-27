@@ -9,8 +9,10 @@ const TYPE_WEIGHTS: Record<FileType, number> = {
   pipe: 0.5,
   component: 0.5,
   dto: 0.3,
-  html: 0.1,
+  model: 0.3,
+  html: 0.15,
   scss: 0.1,
+  css: 0.1,
   spec: 0.1,
   unknown: 0.4,
 };

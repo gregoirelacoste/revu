@@ -5,7 +5,8 @@ export type MethodStatus = 'new' | 'mod' | 'unch';
 export type DiffLineType = 'a' | 'd' | 'c';
 export type LinkType = 'import' | 'inject' | 'http' | 'grpc' | 'type' | 'side-effect';
 export type FileType = 'controller' | 'service' | 'module' | 'component' | 'guard'
-  | 'dto' | 'interceptor' | 'pipe' | 'spec' | 'html' | 'scss' | 'unknown';
+  | 'dto' | 'model' | 'interceptor' | 'pipe' | 'spec'
+  | 'html' | 'scss' | 'css' | 'unknown';
 
 export interface DiffEntry { t: DiffLineType; c: string }
 
@@ -114,7 +115,7 @@ export interface Palette {
   bg: string; surface: string; card: string; cardHov: string;
   border: string; text: string; dim: string; bright: string; white: string;
   green: string; red: string; orange: string; blue: string;
-  purple: string; cyan: string; pink: string;
+  purple: string; cyan: string; pink: string; brown: string;
   gBg: string; gBo: string; sBg: string; sBo: string;
   lBg: string; sh: string;
   diffAddBg: string; diffDelBg: string; diffAddHi: string; diffDelHi: string;
