@@ -47,21 +47,22 @@ export function MethodRow({
         }}>
         <span style={{
           fontSize: 8, fontWeight: 800, width: 8,
-          color: item.status === 'new' ? P.green : item.status === 'mod' ? P.orange : item.impacted ? P.orange : P.dim,
+          color: item.status === 'del' ? P.red : item.status === 'new' ? P.green : item.status === 'mod' ? P.orange : item.impacted ? P.orange : P.dim,
         }}>
-          {item.status === 'new' ? '+' : item.status === 'mod' ? '~' : item.impacted ? '⚡' : '·'}
+          {item.status === 'del' ? '−' : item.status === 'new' ? '+' : item.status === 'mod' ? '~' : item.impacted ? '⚡' : '·'}
         </span>
         <span style={{
           fontSize: 7.5, fontWeight: 700, fontFamily: MONO, padding: '0 3px', borderRadius: 2,
-          background: item.httpVerb ? `${P.cyan}10` : item.isType ? `${P.purple}10` : isMethod ? `${P.blue}10` : `${P.orange}10`,
-          color: item.httpVerb ? P.cyan : item.isType ? P.purple : isMethod ? P.blue : P.orange,
+          background: item.status === 'del' ? `${P.red}10` : item.httpVerb ? `${P.cyan}10` : item.isType ? `${P.purple}10` : isMethod ? `${P.blue}10` : `${P.orange}10`,
+          color: item.status === 'del' ? P.red : item.httpVerb ? P.cyan : item.isType ? P.purple : isMethod ? P.blue : P.orange,
         }}>
-          {item.httpVerb || (item.isType ? 'T' : isMethod ? 'fn' : 'ct')}
+          {item.status === 'del' ? 'DEL' : item.httpVerb || (item.isType ? 'T' : isMethod ? 'fn' : 'ct')}
         </span>
         <span style={{
           flex: 1, fontSize: 11, fontFamily: MONO,
-          color: item.crit >= 7 ? P.white : P.bright,
+          color: item.status === 'del' ? P.dim : item.crit >= 7 ? P.white : P.bright,
           fontWeight: item.crit >= 7 ? 700 : 400,
+          textDecoration: item.status === 'del' ? 'line-through' : 'none',
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         }}>{item.name}</span>
         {item.sigChanged && (

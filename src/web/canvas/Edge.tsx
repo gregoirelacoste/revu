@@ -8,6 +8,7 @@ interface EdgeProps {
   to: FlatPlanet;
   P: Palette;
   visible: boolean;
+  ambient?: boolean;
   highlighted: boolean;
   zoomLevel: number;
   offset: number;
@@ -28,16 +29,16 @@ function edgeOpacity(edge: EdgeData): number {
   return 0.55;
 }
 
-export function Edge({ edge, from, to, P, visible, highlighted, zoomLevel, offset, onClick }: EdgeProps) {
+export function Edge({ edge, from, to, P, visible, ambient, highlighted, zoomLevel, offset, onClick }: EdgeProps) {
   const x1 = from.ax + offset;
   const y1 = from.ay + offset;
   const x2 = to.ax + offset;
   const y2 = to.ay + offset;
 
-  const shown = visible || highlighted;
+  const shown = visible || highlighted || ambient;
   const ck = highlighted ? 'cyan' : edge.sigChanged ? 'orange' : edge.critical ? 'red' : edge.cross ? 'cyan' : 'dim';
   const color = P[ck as keyof Palette] as string;
-  const op = highlighted ? 1.0 : visible ? edgeOpacity(edge) : 0;
+  const op = highlighted ? 1.0 : visible ? edgeOpacity(edge) : ambient ? 0.18 : 0;
 
   const dx = x2 - x1;
   const dy = y2 - y1;
@@ -82,7 +83,7 @@ export function Edge({ edge, from, to, P, visible, highlighted, zoomLevel, offse
 
       {/* Label */}
       {shown && zoomLevel >= 0.4 && (
-        <g onClick={handleClick} style={{ cursor: 'pointer' }}>
+        <g onClick={handleClick} style={{ cursor: 'pointer', pointerEvents: 'auto' }}>
           <rect
             x={lx - edge.label.length * 2.2 - 3} y={ly - 6}
             width={edge.label.length * 4.4 + 6} height={11} rx={3}

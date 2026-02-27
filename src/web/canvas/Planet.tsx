@@ -18,6 +18,7 @@ interface PlanetProps {
   zoomLevel: number;
   isPanning: boolean;
   onClick: (id: string) => void;
+  onHover?: (id: string | null) => void;
 }
 
 function computeOpacity(
@@ -42,7 +43,7 @@ function shapeRadius(shape: PlanetShape): string {
 
 export function Planet({
   planet, P, isFocused, isVisible, isBlastL1, isBlastL2,
-  isArchived, isMethodHighlighted, hasSelection, zoomLevel, isPanning, onClick,
+  isArchived, isMethodHighlighted, hasSelection, zoomLevel, isPanning, onClick, onHover,
 }: PlanetProps) {
   const [isHovered, setIsHovered] = useState(false);
   const bR = baseRadius(planet.crit);
@@ -86,7 +87,8 @@ export function Planet({
       zIndex: isFocused ? 20 : isHovered ? 10 : 1,
       filter: isArchived ? 'saturate(0.2)' : 'none',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-    }} onMouseEnter={() => setIsHovered(true)} onMouseLeave={() => setIsHovered(false)}>
+    }} onMouseEnter={() => { setIsHovered(true); onHover?.(planet.id); }}
+       onMouseLeave={() => { setIsHovered(false); onHover?.(null); }}>
 
       {/* Blast radius ring */}
       {blastBorder && !isHovered && (

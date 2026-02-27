@@ -1,145 +1,208 @@
-# Plan : 4 features + réorganisation `interactions/`
+# Plan : Méthodes supprimées + auto-avance review
 
 ## Contexte
 
-4 améliorations UX + réorganisation du code d'interaction :
-1. Panel résumé "Universe" quand rien n'est sélectionné
-2. Highlight canvas au clic sur une méthode dans le panel droit
-3. Sélection d'un edge grise tout sauf la paire concernée
-4. Navigation back/forward avec Alt+Gauche/Droite (historique 20 actions)
-5. Dossier `interactions/` pour regrouper blast radius, focus history, method highlight
+Deux améliorations UX demandées :
+1. Les méthodes/constantes **supprimées** d'un fichier n'apparaissent pas dans le right panel. Seules les méthodes `new`/`mod`/`unch` sont listées car `buildMethodData()` n'itère que sur les méthodes du **nouveau** code.
+2. Quand on clique sur un flag (OK, Bug, Test, Question) sur une planète, rien ne se passe visuellement. L'utilisateur doit manuellement naviguer vers le fichier suivant. On veut un **auto-avance** vers la prochaine planète non reviewée.
 
 ---
 
-## Step 1 : Edge selection isole la paire
+## Feature 1 : Afficher les méthodes/constantes supprimées
 
-**Fichier** : `src/web/hooks/useBlastRadius.ts`
+### Step 1 : Ajouter `'del'` à MethodStatus
 
-Ajouter un early return après `if (!focus) return EMPTY;` :
+**Fichiers** : `src/server/types.ts:9` + `src/web/types/index.ts:4`
+
 ```typescript
-if (focus.kind === 'edge') {
-  return {
-    connected: new Set([focus.edge.from, focus.edge.to]),
-    l1: new Set<string>(),
-    l2: new Set<string>(),
-    edgeSet: new Set([`${focus.edge.from}|${focus.edge.to}`]),
-  };
+export type MethodStatus = 'new' | 'mod' | 'unch' | 'del';
+```
+
+### Step 2 : Détecter les méthodes supprimées (server)
+
+**Fichier** : `src/server/routes/scan.routes.ts` - `buildMethodData()` (l.191)
+
+Après le `pf.methods.map(...)` actuel, ajouter une boucle sur `oldAst.methods` pour trouver celles absentes du nouveau code :
+
+```typescript
+function buildMethodData(pf, diff, oldAst, fileCrit): MethodData[] {
+  const newMethods = pf.methods.map(m => { /* ... existant ... */ });
+
+  // Méthodes supprimées
+  if (oldAst?.methods) {
+    const newNames = new Set(pf.methods.map(m => m.name));
+    for (const om of oldAst.methods) {
+      if (!newNames.has(om.name)) {
+        const delDiff = extractDeletedMethodDiff(om.name, diff);
+        if (delDiff.length === 0) continue; // pas dans le diff → pas vraiment supprimé
+        newMethods.push({
+          name: om.name, status: 'del', crit: Math.round(fileCrit * 0.8 * 10) / 10,
+          usages: 0, tested: false, sigChanged: false, diff: delDiff,
+        });
+      }
+    }
+  }
+
+  return newMethods;
 }
 ```
 
-Résultat : seuls les 2 endpoints et l'edge restent visibles, tout le reste à 0.04 opacité.
+### Step 3 : Extraire le diff d'une méthode supprimée (server)
 
----
+**Fichier** : `src/server/routes/scan.routes.ts` - nouvelle fonction
 
-## Step 2 : Navigation history Alt+Left/Right
+Les lignes supprimées (`type: 'del'`) dans le diff qui correspondent au corps de la méthode. Comme la méthode n'existe plus dans le nouveau code, on utilise `oldStart` des hunks :
 
-**Nouveau** : `src/web/hooks/useFocusHistory.ts`
-- `stack: (FocusTarget | null)[]` init `[null]`, cap 20
-- `cursor: number`, `navigatingRef` pour éviter que back/forward push
-- `push(target)` tronque forward + ajoute
-- `back()` / `forward()` déplacent le cursor
-- `useEffect` keydown : `Alt+ArrowLeft` / `Alt+ArrowRight` (skip inputs/textareas)
-- Expose `{ focus, setFocus, back, forward, canGoBack, canGoForward }`
+```typescript
+function extractDeletedMethodDiff(
+  methodName: string, diff: FileDiff,
+): Array<{ t: DiffLineType; c: string }> {
+  // Chercher un bloc de lignes 'del' consécutives qui contient le nom de la méthode
+  const result: Array<{ t: DiffLineType; c: string }> = [];
+  for (const hunk of diff.hunks) {
+    const delBlock: string[] = [];
+    for (const line of hunk.lines) {
+      if (line.type === 'del') {
+        delBlock.push(line.content);
+      } else {
+        if (delBlock.some(l => l.includes(methodName))) {
+          for (const dl of delBlock) result.push({ t: 'd', c: dl });
+        }
+        delBlock.length = 0;
+      }
+    }
+    // Flush remaining
+    if (delBlock.some(l => l.includes(methodName))) {
+      for (const dl of delBlock) result.push({ t: 'd', c: dl });
+    }
+  }
+  return result;
+}
+```
 
-**Fichier** : `src/web/App.tsx`
-- Remplacer `useState<FocusTarget | null>(null)` par `useFocusHistory()`
-- Passer `canGoBack`, `canGoForward`, `onBack`, `onForward` au Header
+### Step 4 : Même traitement pour les constantes supprimées (server)
 
-**Fichier** : `src/web/ui/Header.tsx`
-- Ajouter props `canGoBack`, `canGoForward`, `onBack`, `onForward`
-- Boutons ◀ / ▶ conditionnels avec `title="Alt+←"` / `title="Alt+→"`
+**Fichier** : `src/server/routes/scan.routes.ts` - `buildConstantData()` (l.214)
 
----
+Ajouter un paramètre `oldAst` et détecter les constantes supprimées de la même manière.
 
-## Step 3 : Panel résumé Universe
+### Step 5 : Afficher les méthodes supprimées (frontend)
 
-**Nouveau** : `src/web/detail/UniverseDetail.tsx`
+**Fichier** : `src/web/detail/PlanetDetail.tsx`
 
-Contenu affiché quand `focus === null` :
-- Header : "UNIVERSE / Review Overview" + "{n} repos · {n} modules · {n} files"
-- StatBox grid 3x2 : Files, Changes, Avg Crit, Max Crit, Cross links, Untested
-- Barre de progression review (reviewed/total, barre visuelle)
-- TOP CRITICAL (5 fichiers, cliquables → navigate)
-- GALAXIES list (cliquables, avg crit, files count, branch)
+Le filtre actuel (l.46) inclut déjà tout sauf `unch` :
+```typescript
+.filter(m => m.status !== 'unch' || m.impacted)
+```
+Les méthodes `del` passeront automatiquement ce filtre.
 
-Réutilise : `StatBox`, `hoverBg`, `critPc`, `MONO`/`SANS`.
+Ajouter le compteur dans `PlanetHeader` :
+```typescript
+const delFn = changedItems.filter(m => m.status === 'del').length;
+// Afficher Tag "DEL 2" en rouge à côté de NEW et MOD
+```
 
-**Fichier** : `src/web/detail/SidePanel.tsx`
-- `focus` passe de `FocusTarget` à `FocusTarget | null`
-- Ajouter prop `galaxies: GalaxyData[]`
-- Cas `{!focus && <UniverseDetail ... />}`
-
-**Fichier** : `src/web/App.tsx`
-- Retirer le conditionnel `{focus && (` autour de SidePanel → toujours rendre
-- Passer `galaxies={data.galaxies}`
-
----
-
-## Step 4 : Method click → highlight canvas
-
-**Nouveau** : `src/web/hooks/useMethodHighlight.ts`
-- Input : `highlight: { planetId: string; methodName: string } | null` + `edges: EdgeData[]`
-- Parcourt les edges dont `specifiers` contient `methodName` touchant `planetId`
-- Retourne `{ highlightedPlanets: Set<string>, highlightedEdges: Set<string> }`
-
-**Fichier** : `src/web/App.tsx`
-- State `highlightMethod` + `setHighlightMethod`
-- `useMethodHighlight(data.edges, highlightMethod)`
-- Wrapper `handleSetFocus` qui clear `highlightMethod` au changement de focus
-- Passer `highlightedPlanets` + `highlightedEdges` au Canvas
-- Passer `onMethodHighlight` au SidePanel
-
-**Fichier** : `src/web/canvas/Canvas.tsx`
-- Props `highlightedPlanets: Set<string>`, `highlightedEdges: Set<string>`
-- `isMethodHighlighted={highlightedPlanets.has(planet.id)}` sur Planet
-- `highlightedEdges` sur EdgeLayer
-
-**Fichier** : `src/web/canvas/Planet.tsx`
-- Prop `isMethodHighlighted: boolean`
-- Anneau cyan (`border: 2px solid ${P.cyan}80` + `boxShadow: 0 0 14px ${P.cyan}35`) quand true
-
-**Fichier** : `src/web/canvas/EdgeLayer.tsx`
-- Prop `highlightedEdges: Set<string>`
-- Calcul `isHighlighted` par edge, forward à Edge
-
-**Fichier** : `src/web/canvas/Edge.tsx`
-- Prop `highlighted: boolean`
-- Opacité : `highlighted ? 1.0 : visible ? edgeOpacity(edge) : 0`
-- Couleur override `P.cyan` quand highlighted
-
-**Fichier** : `src/web/detail/SidePanel.tsx` → forward `onMethodHighlight` à PlanetDetail
-**Fichier** : `src/web/detail/PlanetDetail.tsx` → forward `onMethodClick` à MethodRow
 **Fichier** : `src/web/detail/MethodRow.tsx`
-- Prop `onMethodClick: (name: string) => void`
-- Au clic : `onMethodClick(isExpanded ? '' : item.name)` + `onToggle()`
+
+Style visuel pour `status === 'del'` :
+- Nom barré (`textDecoration: 'line-through'`)
+- Badge "DEL" rouge au lieu de "NEW"/"MOD"
+- Diff affiché normalement (que des lignes rouges `'d'`)
 
 ---
 
-## Step 5 : Réorganisation `interactions/`
+## Feature 2 : Auto-avance après flag planète
 
-**Nouveau dossier** : `src/web/interactions/`
+### Step 6 : Helper `findNextPlanet`
 
-Déplacements :
-| Depuis | Vers |
-|--------|------|
-| `hooks/useBlastRadius.ts` | `interactions/useBlastRadius.ts` |
-| `hooks/useFocusHistory.ts` | `interactions/useFocusHistory.ts` |
-| `hooks/useMethodHighlight.ts` | `interactions/useMethodHighlight.ts` |
+**Fichier** : `src/web/utils/geometry.ts` - nouvelle fonction
 
-Restent dans `hooks/` : `useCamera.ts` (mécanique caméra), `useReview.ts` (persistance)
+```typescript
+export function findNextPlanet(
+  allPlanets: FlatPlanet[],
+  currentId: string,
+  archivedIds: Set<string>,
+): FlatPlanet | null {
+  const current = allPlanets.find(p => p.id === currentId);
+  if (!current) return null;
 
-MAJ imports : `Canvas.tsx`, `App.tsx`
+  // 1. Même système, non reviewé, par criticité décroissante
+  const sameSystem = allPlanets
+    .filter(p => p.system.id === current.system.id && p.id !== currentId && !archivedIds.has(p.id))
+    .sort((a, b) => b.crit - a.crit);
+  if (sameSystem.length > 0) return sameSystem[0];
+
+  // 2. Même galaxie, non reviewé, par criticité décroissante
+  const sameGalaxy = allPlanets
+    .filter(p => p.galaxy.id === current.galaxy.id && p.id !== currentId && !archivedIds.has(p.id))
+    .sort((a, b) => b.crit - a.crit);
+  if (sameGalaxy.length > 0) return sameGalaxy[0];
+
+  // 3. N'importe quelle planète non reviewée
+  const any = allPlanets
+    .filter(p => p.id !== currentId && !archivedIds.has(p.id))
+    .sort((a, b) => b.crit - a.crit);
+  return any[0] ?? null;
+}
+```
+
+### Step 7 : Modifier FlagBar pour auto-naviguer
+
+**Fichier** : `src/web/detail/PlanetDetail.tsx`
+
+Ajouter `onNavigate`, `allPlanets`, `archivedIds` aux props de `FlagBar` :
+
+```typescript
+function FlagBar({ planet, flag, P, toggleFlag, onNavigate, allPlanets, archivedIds }) {
+  // ...
+  onClick={() => {
+    toggleFlag(planet.id, ft.key);
+    // Si on vient de mettre un flag (pas de toggle off), avancer
+    if (flag !== ft.key) {
+      // Petit délai pour laisser le state se mettre à jour
+      setTimeout(() => {
+        const next = findNextPlanet(allPlanets, planet.id,
+          new Set([...archivedIds, planet.id])); // inclure la planète qu'on vient de flagger
+        if (next) onNavigate({ kind: 'planet', id: next.id, planet: next });
+      }, 150);
+    }
+  }
+}
+```
+
+### Step 8 : Passer les props nécessaires
+
+**Fichier** : `src/web/detail/PlanetDetail.tsx` (l.143)
+
+```typescript
+<FlagBar planet={planet} flag={flag} P={P} toggleFlag={review.toggleFlag}
+  onNavigate={onNavigate} allPlanets={allPlanets} archivedIds={review.archivedIds} />
+```
+
+La prop `allPlanets` doit être ajoutée à l'interface `Props` de `PlanetDetail` (elle n'y est peut-être déjà - à vérifier).
+
+---
+
+## Fichiers modifiés (résumé)
+
+| Fichier | Nature |
+|---------|--------|
+| `src/server/types.ts` | `MethodStatus` += `'del'` |
+| `src/web/types/index.ts` | `MethodStatus` += `'del'` |
+| `src/server/routes/scan.routes.ts` | `buildMethodData` détecte les suppressions, `extractDeletedMethodDiff`, `buildConstantData` avec oldAst |
+| `src/web/detail/PlanetDetail.tsx` | Compteur DEL dans header, FlagBar avec auto-avance |
+| `src/web/detail/MethodRow.tsx` | Style barré pour `status === 'del'` |
+| `src/web/utils/geometry.ts` | `findNextPlanet()` |
 
 ---
 
 ## Vérification
 
-1. `npx tsc -p tsconfig.web.json --noEmit` → 0 erreurs
-2. `npx vite build` → build OK
-3. Tests manuels :
-   - Chargement → panel résumé avec stats, progress, top critical, galaxies
-   - Clic galaxie → panel change, `Alt+←` revient au résumé, `Alt+→` re-forward
-   - Boutons ◀ ▶ dans header
-   - Clic edge → seuls 2 endpoints + 1 edge visibles, reste grisé
-   - Focus planète → clic méthode → anneaux cyan sur planètes liées, edges cyan
-   - Re-clic (collapse) → highlight disparait
+1. `npx tsc --noEmit` (server) → 0 erreurs
+2. `npx tsc -p tsconfig.web.json --noEmit` → 0 erreurs
+3. `npx vite build` → OK
+4. Tests manuels :
+   - Supprimer une méthode dans un fichier modifié → elle apparaît avec badge "DEL" et diff rouge
+   - Cliquer "OK" sur une planète → navigue automatiquement vers la prochaine planète non reviewée du même système
+   - Si toutes les planètes du système sont reviewées → navigue vers la prochaine du même repo
+   - Toggle off un flag (re-clic) → pas de navigation

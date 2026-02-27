@@ -1,7 +1,7 @@
 // ── Frontend types (mirrors API response) ──
 
 export type Flag = 'ok' | 'bug' | 'test' | 'question';
-export type MethodStatus = 'new' | 'mod' | 'unch';
+export type MethodStatus = 'new' | 'mod' | 'unch' | 'del';
 export type DiffLineType = 'a' | 'd' | 'c';
 export type LinkType = 'import' | 'inject' | 'http' | 'grpc' | 'type' | 'side-effect';
 export type FileType = 'controller' | 'service' | 'module' | 'component' | 'guard'
@@ -43,10 +43,12 @@ export interface PlanetData {
 export interface SystemData {
   id: string;
   label: string;
+  fullPath: string;
   cx: number;
   cy: number;
   r: number;
   planets: PlanetData[];
+  children?: SystemData[];
 }
 
 export interface GalaxyData {
@@ -92,7 +94,7 @@ export interface FlatPlanet extends PlanetData {
 
 export type FocusTarget =
   | { kind: 'planet'; id: string; planet: FlatPlanet }
-  | { kind: 'system'; id: string; system: SystemData; galaxy: GalaxyData }
+  | { kind: 'system'; id: string; system: SystemData; galaxy: GalaxyData; absCx: number; absCy: number }
   | { kind: 'galaxy'; id: string; galaxy: GalaxyData }
   | { kind: 'edge'; id: string; edge: EdgeData; fromPlanet: FlatPlanet; toPlanet: FlatPlanet };
 

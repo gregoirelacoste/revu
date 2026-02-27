@@ -124,7 +124,7 @@ async function buildPlanetEntry(
   const oldAst = oldCode ? parseTypeScript(oldCode) : null;
 
   const methods = buildMethodData(pf, diff, oldAst, fileCrit);
-  const constants = buildConstantData(pf, diff, fileCrit);
+  const constants = buildConstantData(pf, diff, oldAst, fileCrit);
 
   dirMap.get(dir)!.push({
     id: `p-${repo.name}-${pf.path.replace(/\//g, '-').replace(/\./g, '_')}`,
@@ -194,7 +194,7 @@ function buildMethodData(
   oldAst: { methods: { name: string; signature: string }[]; constants: { name: string }[] } | null,
   fileCrit: number,
 ): MethodData[] {
-  return pf.methods.map(m => {
+  const result: MethodData[] = pf.methods.map(m => {
     const oldMethod = oldAst?.methods.find(om => om.name === m.name);
     const isNew = !oldMethod;
     const sigChanged = !isNew && oldMethod.signature !== m.signature;
@@ -209,19 +209,57 @@ function buildMethodData(
       sigChanged, httpVerb: m.httpVerb, diff: methodDiff,
     };
   });
+
+  if (oldAst?.methods) {
+    const newNames = new Set(pf.methods.map(m => m.name));
+    for (const om of oldAst.methods) {
+      if (!newNames.has(om.name)) {
+        const delDiff = extractDeletedBlockDiff(om.name, diff);
+        if (delDiff.length === 0) continue;
+        result.push({
+          name: om.name, status: 'del',
+          crit: Math.round(fileCrit * 0.8 * 10) / 10,
+          usages: 0, tested: false, sigChanged: false, diff: delDiff,
+        });
+      }
+    }
+  }
+
+  return result;
 }
 
-function buildConstantData(pf: ParsedFile, diff: FileDiff, fileCrit: number): MethodData[] {
-  return pf.constants.map(c => {
+function buildConstantData(
+  pf: ParsedFile, diff: FileDiff,
+  oldAst: { methods: { name: string; signature: string }[]; constants: { name: string }[] } | null,
+  fileCrit: number,
+): MethodData[] {
+  const result = pf.constants.map(c => {
     const rawDiff = extractMethodDiff(c.startLine, c.endLine, diff, true);
     if (rawDiff.length === 0 || isFormattingOnly(rawDiff)) return null;
     return {
-      name: c.name, status: 'new' as const,
+      name: c.name, status: 'new' as MethodStatus,
       crit: Math.round(fileCrit * 0.6 * 10) / 10,
       usages: 1, tested: false, sigChanged: false,
       isType: c.isType, diff: rawDiff,
     };
   }).filter(Boolean) as MethodData[];
+
+  if (oldAst?.constants) {
+    const newNames = new Set(pf.constants.map(c => c.name));
+    for (const oc of oldAst.constants) {
+      if (!newNames.has(oc.name)) {
+        const delDiff = extractDeletedBlockDiff(oc.name, diff);
+        if (delDiff.length === 0) continue;
+        result.push({
+          name: oc.name, status: 'del',
+          crit: Math.round(fileCrit * 0.5 * 10) / 10,
+          usages: 0, tested: false, sigChanged: false, diff: delDiff,
+        });
+      }
+    }
+  }
+
+  return result;
 }
 
 // ── Formatting filter ──
@@ -244,6 +282,30 @@ function isFormattingOnly(diff: Array<{ t: DiffLineType; c: string }>): boolean 
 }
 
 // ── Diff extraction ──
+
+/** Extract deleted lines from the diff that belong to a removed method/constant */
+function extractDeletedBlockDiff(
+  name: string, diff: FileDiff,
+): Array<{ t: DiffLineType; c: string }> {
+  const result: Array<{ t: DiffLineType; c: string }> = [];
+  for (const hunk of diff.hunks) {
+    const delBlock: string[] = [];
+    for (const line of hunk.lines) {
+      if (line.type === 'del') {
+        delBlock.push(line.content);
+      } else {
+        if (delBlock.some(l => l.includes(name))) {
+          for (const dl of delBlock) result.push({ t: 'd', c: dl });
+        }
+        delBlock.length = 0;
+      }
+    }
+    if (delBlock.some(l => l.includes(name))) {
+      for (const dl of delBlock) result.push({ t: 'd', c: dl });
+    }
+  }
+  return result;
+}
 
 function extractMethodDiff(
   startLine: number, endLine: number, diff: FileDiff, isNew: boolean,

@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import type { EdgeData, FocusTarget, FlatPlanet } from '../types';
+import { collectSystemIds } from '../utils/geometry';
 
 interface BlastResult {
   connected: Set<string>;
@@ -68,10 +69,12 @@ function getSeedIds(focus: FocusTarget, allPlanets: FlatPlanet[]): string[] {
   switch (focus.kind) {
     case 'planet': return [focus.id];
     case 'edge': return [focus.edge.from, focus.edge.to];
-    case 'system':
+    case 'system': {
+      const sysIds = collectSystemIds(focus.system);
       return allPlanets
-        .filter(p => p.system.id === focus.system.id)
+        .filter(p => sysIds.has(p.system.id))
         .map(p => p.id);
+    }
     case 'galaxy':
       return allPlanets
         .filter(p => p.galaxy.id === focus.galaxy.id)

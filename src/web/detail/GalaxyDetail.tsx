@@ -4,6 +4,7 @@ import { MONO, SANS } from '../theme/colors';
 import { StatBox } from '../ui/StatBox';
 import { TabButton } from '../ui/TabButton';
 import { critPc, pc, hoverBg } from '../utils/style-helpers';
+import { collectSystemIds } from '../utils/geometry';
 
 interface Props {
   galaxy: GalaxyData;
@@ -110,7 +111,8 @@ function SystemsList({ g, galaxyPlanets, P, onNavigate }: {
         SYSTEMS ({g.systems.length})
       </div>
       {g.systems.map(s => {
-        const sysPlanets = galaxyPlanets.filter(p => p.system.id === s.id);
+        const sysIds = collectSystemIds(s);
+        const sysPlanets = galaxyPlanets.filter(p => sysIds.has(p.system.id));
         const sysCrit = sysPlanets.length
           ? Math.round(sysPlanets.reduce((sum, p) => sum + p.crit, 0) / sysPlanets.length * 10) / 10
           : 0;
@@ -120,7 +122,7 @@ function SystemsList({ g, galaxyPlanets, P, onNavigate }: {
 
         return (
           <div key={s.id}
-            onClick={() => onNavigate({ kind: 'system', id: s.id, system: s, galaxy: g })}
+            onClick={() => onNavigate({ kind: 'system', id: s.id, system: s, galaxy: g, absCx: g.cx + s.cx, absCy: g.cy + s.cy })}
             style={{
               padding: '6px 8px', marginBottom: 3, borderRadius: 5,
               cursor: 'pointer', borderLeft: `3px solid ${sc}`,

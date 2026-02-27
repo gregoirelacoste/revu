@@ -3,6 +3,7 @@ import type { FlatPlanet, Palette, EdgeData, FocusTarget, ReviewState, MethodDat
 import { MONO, SANS, FLAGS } from '../theme/colors';
 import { TabButton } from '../ui/TabButton';
 import { critPc, pc, getBadgeIcon, hoverBg } from '../utils/style-helpers';
+import { findNextPlanet } from '../utils/geometry';
 import { MethodRow } from './MethodRow';
 
 interface Props {
@@ -67,6 +68,7 @@ export function PlanetDetail({ planet, P, review, edges, allPlanets, onNavigate,
   const maxU = Math.max(...allItems.map(m => m.usages || 1), 1);
   const newFn = changedItems.filter(m => m.status === 'new' && !m.isType).length;
   const modFn = changedItems.filter(m => m.status === 'mod').length;
+  const delFn = changedItems.filter(m => m.status === 'del').length;
   const sigC = changedItems.filter(m => m.sigChanged).length;
 
   const linked = useMemo(() => {
@@ -87,7 +89,7 @@ export function PlanetDetail({ planet, P, review, edges, allPlanets, onNavigate,
   return (
     <div>
       <PlanetHeader planet={planet} ic={ic} iconC={iconC} color={color} P={P}
-        newFn={newFn} modFn={modFn} sigC={sigC} />
+        newFn={newFn} modFn={modFn} delFn={delFn} sigC={sigC} />
 
       <div style={{ display: 'flex', borderBottom: `1px solid ${P.border}` }}>
         <TabButton label="Active" count={activeItems.length} active={tab === 'active'}
@@ -140,15 +142,16 @@ export function PlanetDetail({ planet, P, review, edges, allPlanets, onNavigate,
           maxUsages={maxU} P={P} onMethodClick={handleMethodClick} />
       )}
 
-      <FlagBar planet={planet} flag={flag} P={P} toggleFlag={review.toggleFlag} />
+      <FlagBar planet={planet} flag={flag} P={P} toggleFlag={review.toggleFlag}
+        onNavigate={onNavigate} allPlanets={allPlanets} archivedIds={review.archivedIds} />
       {linked.length > 0 && <LinkedFiles linked={linked} P={P} onNavigate={onNavigate} />}
     </div>
   );
 }
 
-function PlanetHeader({ planet, ic, iconC, color, P, newFn, modFn, sigC }: {
+function PlanetHeader({ planet, ic, iconC, color, P, newFn, modFn, delFn, sigC }: {
   planet: FlatPlanet; ic: { i: string; c: string }; iconC: string;
-  color: string; P: Palette; newFn: number; modFn: number; sigC: number;
+  color: string; P: Palette; newFn: number; modFn: number; delFn: number; sigC: number;
 }) {
   return (
     <div style={{
@@ -166,11 +169,12 @@ function PlanetHeader({ planet, ic, iconC, color, P, newFn, modFn, sigC }: {
           {planet.name}<span style={{ color: P.dim, fontWeight: 400 }}>{planet.ext}</span>
         </div>
         <div style={{ fontSize: 11, color: P.dim, fontFamily: MONO, marginTop: 1 }}>
-          {planet.galaxy.label} / {planet.system.label}
+          {planet.galaxy.label} / {planet.system.fullPath}
         </div>
         <div style={{ display: 'flex', gap: 3, marginTop: 3 }}>
           {newFn > 0 && <Tag text={`+${newFn} fn`} color={P.green} />}
           {modFn > 0 && <Tag text={`~${modFn} mod`} color={P.orange} />}
+          {delFn > 0 && <Tag text={`-${delFn} del`} color={P.red} />}
           {sigC > 0 && <Tag text={`\u26A0 ${sigC} sig`} color={P.red} />}
           {!planet.tested && <Tag text="untested" color={P.red} />}
         </div>
@@ -191,9 +195,12 @@ function Tag({ text, color }: { text: string; color: string }) {
   );
 }
 
-function FlagBar({ planet, flag, P, toggleFlag }: {
+function FlagBar({ planet, flag, P, toggleFlag, onNavigate, allPlanets, archivedIds }: {
   planet: FlatPlanet; flag: string | null; P: Palette;
   toggleFlag: ReviewState['toggleFlag'];
+  onNavigate: (target: FocusTarget) => void;
+  allPlanets: FlatPlanet[];
+  archivedIds: Set<string>;
 }) {
   return (
     <div style={{
@@ -203,7 +210,15 @@ function FlagBar({ planet, flag, P, toggleFlag }: {
       {FLAGS.map(ft => {
         const ftColor = pc(ft.c, P);
         return (
-          <button key={ft.key} onClick={() => toggleFlag(planet.id, ft.key)}
+          <button key={ft.key} onClick={() => {
+              const wasFlagged = flag === ft.key;
+              toggleFlag(planet.id, ft.key);
+              if (!wasFlagged) {
+                const next = findNextPlanet(allPlanets, planet.id,
+                  new Set([...archivedIds, planet.id]));
+                if (next) onNavigate({ kind: 'planet', id: next.id, planet: next });
+              }
+            }}
             style={{
               flex: 1, padding: '4px 0', borderRadius: 4, fontSize: 10, fontFamily: SANS,
               background: flag === ft.key ? `${ftColor}10` : 'transparent',

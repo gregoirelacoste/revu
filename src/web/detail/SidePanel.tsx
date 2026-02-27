@@ -80,7 +80,9 @@ export function SidePanel({ focus, P, edges, allPlanets, galaxies, width, setWid
         )}
         {focus?.kind === 'system' && (
           <SystemDetail
-            system={focus.system} galaxy={focus.galaxy} P={P} review={review}
+            system={focus.system} galaxy={focus.galaxy}
+            absCx={focus.absCx} absCy={focus.absCy}
+            P={P} review={review}
             edges={edges} allPlanets={allPlanets} onNavigate={onNavigate} />
         )}
         {focus?.kind === 'edge' && (

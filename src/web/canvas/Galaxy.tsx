@@ -7,14 +7,17 @@ interface GalaxyProps {
   galaxy: GalaxyData;
   P: Palette;
   isFocused: boolean;
+  isHighlighted: boolean;
   focusedSystemId: string | null;
+  highlightedSystemIds: Set<string>;
   onGalaxyClick: (g: GalaxyData) => void;
-  onSystemClick: (s: SystemData, g: GalaxyData) => void;
+  onSystemClick: (s: SystemData, g: GalaxyData, absCx: number, absCy: number) => void;
+  onSystemHover?: (id: string | null) => void;
 }
 
 export function Galaxy({
-  galaxy: g, P, isFocused, focusedSystemId,
-  onGalaxyClick, onSystemClick,
+  galaxy: g, P, isFocused, isHighlighted, focusedSystemId, highlightedSystemIds,
+  onGalaxyClick, onSystemClick, onSystemHover,
 }: GalaxyProps) {
   const c = P[g.color as keyof Palette] as string;
 
@@ -23,9 +26,11 @@ export function Galaxy({
     onGalaxyClick(g);
   }, [g, onGalaxyClick]);
 
-  const handleSystemClick = useCallback((s: SystemData) => {
-    onSystemClick(s, g);
+  const handleSystemClick = useCallback((s: SystemData, absCx: number, absCy: number) => {
+    onSystemClick(s, g, absCx, absCy);
   }, [g, onSystemClick]);
+
+  const labelBold = isFocused || isHighlighted;
 
   return (
     <div>
@@ -40,15 +45,17 @@ export function Galaxy({
         cursor: 'pointer',
         transition: 'border-color 0.2s, background 0.2s',
       }} />
-      {/* Label - more visible */}
+      {/* Label */}
       <div style={{
         position: 'absolute', left: g.cx - g.rx + 18, top: g.cy - g.ry + 12,
         pointerEvents: 'none',
       }}>
         <div style={{
-          fontSize: 19, fontWeight: 900, fontFamily: SANS, color: `${c}cc`,
+          fontSize: labelBold ? 21 : 19, fontWeight: 900, fontFamily: SANS,
+          color: labelBold ? `${c}ee` : `${c}cc`,
           letterSpacing: 2, textTransform: 'uppercase',
           textShadow: `0 0 20px ${c}50`,
+          transition: 'font-size 0.2s, color 0.2s',
         }}>
           {g.label}
         </div>
@@ -63,7 +70,11 @@ export function Galaxy({
       {g.systems.map(s => (
         <System key={s.id} system={s} galaxy={g} P={P}
           isFocused={focusedSystemId === s.id}
-          onSystemClick={handleSystemClick} />
+          focusedSystemId={focusedSystemId}
+          highlightedSystemIds={highlightedSystemIds}
+          parentOffset={{ x: g.cx, y: g.cy }}
+          onSystemClick={handleSystemClick}
+          onSystemHover={onSystemHover} />
       ))}
     </div>
   );

@@ -6,7 +6,7 @@ export type FileType =
   | 'html' | 'scss' | 'css' | 'unknown';
 
 export type Flag = 'ok' | 'bug' | 'test' | 'question';
-export type MethodStatus = 'new' | 'mod' | 'unch';
+export type MethodStatus = 'new' | 'mod' | 'unch' | 'del';
 export type DiffLineType = 'a' | 'd' | 'c';
 export type LinkType = 'import' | 'inject' | 'http' | 'grpc' | 'type' | 'side-effect';
 
@@ -127,10 +127,12 @@ export interface PlanetData {
 export interface SystemData {
   id: string;
   label: string;
+  fullPath: string;
   cx: number;
   cy: number;
   r: number;
   planets: PlanetData[];
+  children?: SystemData[];
 }
 
 export interface GalaxyData {

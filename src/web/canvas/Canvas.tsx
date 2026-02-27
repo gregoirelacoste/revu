@@ -1,6 +1,6 @@
-import { useMemo, useCallback, useEffect } from 'react';
-import type { GalaxyData, EdgeData, Palette, FocusTarget, FlatPlanet } from '../types';
-import { flattenPlanets, planetMap as buildPlanetMap } from '../utils/geometry';
+import { useMemo, useCallback, useEffect, useState } from 'react';
+import type { GalaxyData, EdgeData, Palette, FocusTarget, FlatPlanet, SystemData } from '../types';
+import { flattenPlanets, planetMap as buildPlanetMap, findSystemAncestry } from '../utils/geometry';
 import { useCamera } from '../hooks/useCamera';
 import { useBlastRadius } from '../interactions/useBlastRadius';
 import { Galaxy } from './Galaxy';
@@ -20,6 +20,8 @@ interface CanvasProps {
   highlightedPlanets: Set<string>;
   highlightedEdges: Set<string>;
 }
+
+const EMPTY_SET = new Set<string>();
 
 export function Canvas({
   galaxies, edges, P,
@@ -41,12 +43,60 @@ export function Canvas({
 
   const { connected, l1, l2, edgeSet } = useBlastRadius(edges, focus, allPlanets);
 
+  // ── Hover tracking ──
+  const [hoveredPlanetId, setHoveredPlanetId] = useState<string | null>(null);
+  const [hoveredSystemId, setHoveredSystemId] = useState<string | null>(null);
+
+  // ── Compute highlighted system/galaxy IDs from hover + focus ──
+  const { highlightedSystemIds, highlightedGalaxyIds } = useMemo(() => {
+    const sysIds = new Set<string>();
+    const galIds = new Set<string>();
+
+    // From hover
+    if (hoveredPlanetId) {
+      const planet = allPlanets.find(p => p.id === hoveredPlanetId);
+      if (planet) {
+        galIds.add(planet.galaxy.id);
+        for (const s of planet.galaxy.systems) {
+          const ancestry = findSystemAncestry([s], planet.system.id);
+          if (ancestry.size > 0) { for (const id of ancestry) sysIds.add(id); break; }
+        }
+      }
+    } else if (hoveredSystemId) {
+      for (const g of galaxies) {
+        const ancestry = findSystemAncestry(g.systems, hoveredSystemId);
+        if (ancestry.size > 0) {
+          galIds.add(g.id);
+          for (const id of ancestry) sysIds.add(id);
+          break;
+        }
+      }
+    }
+
+    // From focus
+    if (focus?.kind === 'planet') {
+      const p = focus.planet;
+      galIds.add(p.galaxy.id);
+      for (const s of p.galaxy.systems) {
+        const ancestry = findSystemAncestry([s], p.system.id);
+        if (ancestry.size > 0) { for (const id of ancestry) sysIds.add(id); break; }
+      }
+    } else if (focus?.kind === 'system') {
+      galIds.add(focus.galaxy.id);
+      const ancestry = findSystemAncestry(focus.galaxy.systems, focus.system.id);
+      for (const id of ancestry) sysIds.add(id);
+    } else if (focus?.kind === 'galaxy') {
+      galIds.add(focus.galaxy.id);
+    }
+
+    return { highlightedSystemIds: sysIds, highlightedGalaxyIds: galIds };
+  }, [hoveredPlanetId, hoveredSystemId, focus, allPlanets, galaxies]);
+
   const zoomToTarget = useCallback((target: FocusTarget) => {
     if (target.kind === 'planet') {
       zoomTo(target.planet);
     } else if (target.kind === 'system') {
-      // system.cx/cy are relative to galaxy, so add galaxy offset
-      zoomToPoint(target.galaxy.cx + target.system.cx, target.galaxy.cy + target.system.cy, SYSTEM_SCALE);
+      zoomToPoint(target.absCx, target.absCy, SYSTEM_SCALE);
     } else if (target.kind === 'galaxy') {
       zoomToPoint(target.galaxy.cx, target.galaxy.cy, GALAXY_SCALE);
     } else if (target.kind === 'edge') {
@@ -70,8 +120,8 @@ export function Canvas({
     setFocus({ kind: 'galaxy', id: galaxy.id, galaxy });
   }, [setFocus]);
 
-  const handleSystemClick = useCallback((system: GalaxyData['systems'][0], galaxy: GalaxyData) => {
-    setFocus({ kind: 'system', id: system.id, system, galaxy });
+  const handleSystemClick = useCallback((system: SystemData, galaxy: GalaxyData, absCx: number, absCy: number) => {
+    setFocus({ kind: 'system', id: system.id, system, galaxy, absCx, absCy });
   }, [setFocus]);
 
   const handleEdgeClick = useCallback((edge: EdgeData) => {
@@ -92,6 +142,14 @@ export function Canvas({
     }
   }, [onCanvasClick, spaceHeld, didDragRef]);
 
+  const handlePlanetHover = useCallback((id: string | null) => {
+    setHoveredPlanetId(id);
+  }, []);
+
+  const handleSystemHover = useCallback((id: string | null) => {
+    setHoveredSystemId(id);
+  }, []);
+
   return (
     <div ref={ref} style={{
       flex: 1, overflow: 'hidden',
@@ -105,9 +163,12 @@ export function Canvas({
         {galaxies.map(g => (
           <Galaxy key={g.id} galaxy={g} P={P}
             isFocused={focusedGalaxyId === g.id}
+            isHighlighted={highlightedGalaxyIds.has(g.id)}
             focusedSystemId={focusedSystemId}
+            highlightedSystemIds={highlightedSystemIds}
             onGalaxyClick={handleGalaxyClick}
-            onSystemClick={handleSystemClick} />
+            onSystemClick={handleSystemClick}
+            onSystemHover={handleSystemHover} />
         ))}
 
         <EdgeLayer edges={edges} planetMap={pMap} P={P}
@@ -126,7 +187,8 @@ export function Canvas({
             hasSelection={hasSelection}
             zoomLevel={cam.s}
             isPanning={spaceHeld}
-            onClick={handlePlanetClick} />
+            onClick={handlePlanetClick}
+            onHover={handlePlanetHover} />
         ))}
       </div>
     </div>

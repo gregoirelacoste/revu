@@ -4,10 +4,13 @@ import { MONO, SANS } from '../theme/colors';
 import { StatBox } from '../ui/StatBox';
 import { TabButton } from '../ui/TabButton';
 import { critPc, pc, getBadgeIcon, hoverBg } from '../utils/style-helpers';
+import { collectSystemIds } from '../utils/geometry';
 
 interface Props {
   system: SystemData;
   galaxy: GalaxyData;
+  absCx: number;
+  absCy: number;
   P: Palette;
   review: ReviewState;
   edges: EdgeData[];
@@ -15,13 +18,15 @@ interface Props {
   onNavigate: (target: FocusTarget) => void;
 }
 
-export function SystemDetail({ system: s, galaxy: g, P, review, edges, allPlanets, onNavigate }: Props) {
+export function SystemDetail({ system: s, galaxy: g, absCx, absCy, P, review, edges, allPlanets, onNavigate }: Props) {
   const [tab, setTab] = useState<'active' | 'done'>('active');
   const c = pc(g.color, P);
 
+  const allSystemIds = useMemo(() => collectSystemIds(s), [s]);
+
   const sysPlanets = useMemo(
-    () => allPlanets.filter(p => p.system.id === s.id && p.galaxy.id === g.id),
-    [allPlanets, s.id, g.id],
+    () => allPlanets.filter(p => allSystemIds.has(p.system.id) && p.galaxy.id === g.id),
+    [allPlanets, allSystemIds, g.id],
   );
 
   const activePlanets = useMemo(
@@ -69,6 +74,11 @@ export function SystemDetail({ system: s, galaxy: g, P, review, edges, allPlanet
         <StatBox label="Ext links" value={`${stats.extEdges}`} color={P.cyan} P={P} />
       </div>
 
+      {s.children && s.children.length > 0 && (
+        <SubDirectories children={s.children} g={g} parentAbsCx={absCx} parentAbsCy={absCy}
+          P={P} allPlanets={allPlanets} onNavigate={onNavigate} />
+      )}
+
       <div style={{ display: 'flex', borderBottom: `1px solid ${P.border}` }}>
         <TabButton label="Active" count={activePlanets.length} active={tab === 'active'}
           onClick={() => setTab('active')} P={P} />
@@ -94,7 +104,7 @@ function SystemHeader({ s, g, c, P, onNavigate }: {
         SYSTEM
       </div>
       <div style={{ fontSize: 16, fontWeight: 800, color: P.white, fontFamily: MONO }}>
-        {s.label}
+        {s.fullPath}
       </div>
       <div onClick={() => onNavigate({ kind: 'galaxy', id: g.id, galaxy: g })}
         style={{
@@ -103,6 +113,55 @@ function SystemHeader({ s, g, c, P, onNavigate }: {
         }}>
         &#8592; {g.label}
       </div>
+    </div>
+  );
+}
+
+function SubDirectories({ children, g, parentAbsCx, parentAbsCy, P, allPlanets, onNavigate }: {
+  children: SystemData[]; g: GalaxyData; parentAbsCx: number; parentAbsCy: number;
+  P: Palette; allPlanets: FlatPlanet[];
+  onNavigate: (target: FocusTarget) => void;
+}) {
+  return (
+    <div style={{ padding: '8px 14px', borderBottom: `1px solid ${P.border}` }}>
+      <div style={{ fontSize: 10, fontWeight: 700, color: P.dim, fontFamily: MONO, marginBottom: 6, letterSpacing: 1 }}>
+        SUB-DIRECTORIES ({children.length})
+      </div>
+      {children.map(child => {
+        const childIds = collectSystemIds(child);
+        const childPlanets = allPlanets.filter(p => childIds.has(p.system.id));
+        const childCrit = childPlanets.length
+          ? Math.round(childPlanets.reduce((sum, p) => sum + p.crit, 0) / childPlanets.length * 10) / 10
+          : 0;
+        const sc = critPc(childCrit, P);
+
+        return (
+          <div key={child.id}
+            onClick={() => onNavigate({
+              kind: 'system', id: child.id, system: child, galaxy: g,
+              absCx: parentAbsCx + child.cx, absCy: parentAbsCy + child.cy,
+            })}
+            style={{
+              padding: '5px 8px', marginBottom: 2, borderRadius: 5,
+              cursor: 'pointer', borderLeft: `3px solid ${sc}`,
+              transition: 'background 0.1s',
+            }}
+            {...hoverBg(`${P.border}44`)}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 11, fontWeight: 600, color: P.bright, fontFamily: MONO, flex: 1 }}>
+                {child.label}
+              </span>
+              <span style={{ fontSize: 11, fontWeight: 800, color: sc, fontFamily: MONO }}>
+                {childCrit.toFixed(1)}
+              </span>
+            </div>
+            <div style={{ fontSize: 9, color: P.dim, fontFamily: MONO, marginTop: 1 }}>
+              {childPlanets.length} files
+              {child.children?.length ? ` · ${child.children.length} sub-dirs` : ''}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
