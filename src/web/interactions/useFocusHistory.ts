@@ -41,16 +41,17 @@ export function useFocusHistory() {
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (!e.altKey) return;
       const tag = (e.target as HTMLElement).tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;
 
+      if (e.key === 'Escape') { setFocus(null); return; }
+      if (!e.altKey) return;
       if (e.key === 'ArrowLeft') { e.preventDefault(); back(); }
       if (e.key === 'ArrowRight') { e.preventDefault(); forward(); }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [back, forward]);
+  }, [back, forward, setFocus]);
 
   return { focus, setFocus, back, forward, canGoBack, canGoForward };
 }
