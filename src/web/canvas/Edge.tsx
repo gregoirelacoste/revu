@@ -34,6 +34,7 @@ export function Edge({ edge, from, to, P, visible, highlighted, zoomLevel, offse
   const x2 = to.ax + offset;
   const y2 = to.ay + offset;
 
+  const shown = visible || highlighted;
   const ck = highlighted ? 'cyan' : edge.sigChanged ? 'orange' : edge.critical ? 'red' : edge.cross ? 'cyan' : 'dim';
   const color = P[ck as keyof Palette] as string;
   const op = highlighted ? 1.0 : visible ? edgeOpacity(edge) : 0;
@@ -48,7 +49,7 @@ export function Edge({ edge, from, to, P, visible, highlighted, zoomLevel, offse
   const qy = (y1 + y2) / 2 + ny * bend;
   const lx = (x1 + qx) / 2;
   const ly = (y1 + qy) / 2;
-  const thickness = edgeThickness(edge);
+  const thickness = highlighted ? Math.max(edgeThickness(edge), 2.5) : edgeThickness(edge);
   const path = `M${x1},${y1} Q${qx},${qy} ${x2},${y2}`;
 
   const handleClick = useCallback((e: React.MouseEvent) => {
@@ -57,28 +58,30 @@ export function Edge({ edge, from, to, P, visible, highlighted, zoomLevel, offse
   }, [edge, onClick]);
 
   return (
-    <g data-clickable opacity={op} style={{ transition: 'opacity 0.25s', cursor: visible ? 'pointer' : 'default' }}>
-      {/* Glow for critical/sigChanged */}
-      {(edge.critical || edge.sigChanged) && visible && (
-        <path d={path} fill="none" stroke={color} strokeWidth={14}
-          opacity={0.06} style={{ filter: 'blur(8px)' }} />
+    <g data-clickable opacity={op} style={{ transition: 'opacity 0.25s', cursor: shown ? 'pointer' : 'default' }}>
+      {/* Glow */}
+      {((edge.critical || edge.sigChanged) && shown || highlighted) && (
+        <path d={path} fill="none" stroke={color}
+          strokeWidth={highlighted ? 18 : 14}
+          opacity={highlighted ? 0.1 : 0.06}
+          style={{ filter: `blur(${highlighted ? 10 : 8}px)` }} />
       )}
 
       {/* Main path */}
       <path d={path} fill="none" stroke={color}
         strokeWidth={thickness}
-        strokeDasharray={edge.dashed ? '5,4' : 'none'}
+        strokeDasharray={edge.dashed && !highlighted ? '5,4' : 'none'}
         markerEnd={`url(#arrow-${ck})`} />
 
       {/* Invisible hit-area for click */}
-      {visible && (
+      {shown && (
         <path d={path} fill="none" stroke="transparent" strokeWidth={12}
           style={{ pointerEvents: 'stroke', cursor: 'pointer' }}
           onClick={handleClick} />
       )}
 
       {/* Label */}
-      {visible && zoomLevel >= 0.4 && (
+      {shown && zoomLevel >= 0.4 && (
         <g onClick={handleClick} style={{ cursor: 'pointer' }}>
           <rect
             x={lx - edge.label.length * 2.2 - 3} y={ly - 6}
