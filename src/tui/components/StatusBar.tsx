@@ -13,7 +13,7 @@ interface StatusBarProps {
   canGoForward?: boolean;
 }
 
-const HINTS = 'Tab:\u21E5 \u2191\u2193:nav {/}:hunk c:ok x:bug ?:flag s:mode [/]:crit /:search Alt+\u2190\u2192:hist Alt+E:export q:quit';
+const HINTS = 'Tab:\u21E5 \u2191\u2193:nav {/}:hunk c:ok x:bug ?:flag s:mode [/]:crit /:search n:next h:help q:quit';
 
 export function StatusBar({ repoCount, stats, sideEffects, width, exportMsg, canGoBack, canGoForward }: StatusBarProps) {
   const pct = stats.total > 0 ? Math.round((stats.reviewed / stats.total) * 100) : 0;

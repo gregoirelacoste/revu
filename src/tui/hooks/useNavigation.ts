@@ -17,6 +17,7 @@ interface NavState {
   collapsed: Set<string>;
   inputMode: InputMode | null;
   searchQuery: string | null;
+  showHelp: boolean;
 }
 
 interface NavSetters {
@@ -31,6 +32,7 @@ interface NavSetters {
   setCollapsed: (fn: (v: Set<string>) => Set<string>) => void;
   setInputMode: (v: InputMode | null) => void;
   setSearchQuery: (v: string | null) => void;
+  setShowHelp: (fn: (v: boolean) => boolean) => void;
   onExport?: () => void;
   onToggleDiffMode?: () => void;
   historyPush?: (pos: NavPos) => void;
@@ -45,6 +47,7 @@ interface NavContext {
   ctx: ContextData | null;
   bodyH: number;
   lineReviews: Map<string, LineReview>;
+  fileProgress: Map<string, 'none' | 'partial' | 'complete'>;
 }
 
 function handleTreePanel(
@@ -53,10 +56,18 @@ function handleTreePanel(
 ): boolean {
   const { treeIdx, collapsed } = state;
   const { setTreeIdx, setSelectedFile, setDiffScroll, setDiffCursor, setPanel, setCollapsed } = setters;
-  const { flatTree, diffs } = context;
+  const { flatTree, diffs, bodyH } = context;
+
+  if (flatTree.length === 0) return true;
+
+  const treePageSize = Math.max(1, bodyH - 6);
 
   if (key.upArrow) { setTreeIdx(i => Math.max(0, i - 1)); return true; }
   if (key.downArrow) { setTreeIdx(i => Math.min(flatTree.length - 1, i + 1)); return true; }
+  if (key.pageUp) { setTreeIdx(i => Math.max(0, i - treePageSize)); return true; }
+  if (key.pageDown) { setTreeIdx(i => Math.min(flatTree.length - 1, i + treePageSize)); return true; }
+  if (input === 'g') { setTreeIdx(() => 0); return true; }
+  if (input === 'G') { setTreeIdx(() => flatTree.length - 1); return true; }
 
   const item = flatTree[treeIdx];
   if (!item) return true;
@@ -85,21 +96,38 @@ function handleTreePanel(
       setSelectedFile(item.node.id);
       setDiffScroll(() => 0);
       setDiffCursor(() => 0);
+      setPanel(() => 1);
     }
     return true;
   }
 
-  if (input === 'c' && !item.isFolder && item.node.id) {
+  // Batch validate: 'C' (Shift+c) — set 'ok' only on lines with no flag
+  if (input === 'C' && !item.isFolder && item.node.id) {
     const fileDiff = diffs.get(item.node.id);
     if (fileDiff) {
       const { lineReviews } = context;
       for (const row of fileDiff.rows) {
         if (row.type === 'diffRow' && row.reviewLine) {
           const lineKey = `${item.node.id}:${row.reviewLine.n}`;
-          if (lineReviews.get(lineKey)?.flag !== 'ok') {
+          const existing = lineReviews.get(lineKey);
+          if (!existing?.flag) {
             setters.setLineFlag(lineKey, 'ok');
           }
         }
+      }
+    }
+    return true;
+  }
+
+  // Next unreviewed file
+  if (input === 'n') {
+    const { fileProgress } = context;
+    for (let j = 1; j <= flatTree.length; j++) {
+      const idx = (treeIdx + j) % flatTree.length;
+      const fi = flatTree[idx];
+      if (!fi.isFolder && fi.node.id && diffs.has(fi.node.id) && fileProgress.get(fi.node.id) !== 'complete') {
+        setTreeIdx(() => idx);
+        break;
       }
     }
     return true;
@@ -147,6 +175,8 @@ function handleDiffPanel(
   if (key.downArrow) { moveCursor(Math.min(maxIdx, diffCursor + 1)); return true; }
   if (key.pageUp) { moveCursor(Math.max(0, diffCursor - visibleH)); return true; }
   if (key.pageDown) { moveCursor(Math.min(maxIdx, diffCursor + visibleH)); return true; }
+  if (input === 'g') { moveCursor(0); return true; }
+  if (input === 'G') { moveCursor(maxIdx); return true; }
 
   if (input === '{') {
     for (let j = diffCursor - 1; j >= 0; j--) {
@@ -241,6 +271,13 @@ export function useNavigation(
   useInput((input, key) => {
     try {
       if (state.inputMode) return;
+
+      // Help overlay: 'h' toggles, Escape/q closes
+      if (state.showHelp) {
+        if (input === 'h' || key.escape || input === 'q') setters.setShowHelp(() => false);
+        return;
+      }
+      if (input === 'h') { setters.setShowHelp(v => !v); return; }
 
       // Search mode: capture all input
       if (state.searchQuery !== null) {

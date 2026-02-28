@@ -13,6 +13,7 @@ import { DLine } from './components/DLine.js';
 import { CommentRows } from './components/CommentRows.js';
 import { ContextPanel } from './components/ContextPanel.js';
 import { StatusBar } from './components/StatusBar.js';
+import { HelpOverlay } from './components/HelpOverlay.js';
 import { buildTree, flattenTree, buildFileDiffs, buildUnifiedRows } from './data.js';
 import { getFileContext, getFolderContext, getRepoContext, getLineContext } from './context.js';
 import { exportMarkdown } from '../export/markdown-exporter.js';
@@ -47,6 +48,7 @@ export function App({ data, rootDir }: AppProps) {
   const history = useNavHistory();
   const [searchQuery, setSearchQuery] = useState<string | null>(null);
   const [exportMsg, setExportMsg] = useState<string | null>(null);
+  const [showHelp, setShowHelp] = useState(false);
 
   const handleExport = useCallback(() => {
     const exported = exportMarkdown(data, diffs, lineReviews);
@@ -208,9 +210,9 @@ export function App({ data, rootDir }: AppProps) {
 
   // Navigation — pass activeDiffRows so nav works on the correct array
   useNavigation(
-    { panel, treeIdx: safeIdx, selectedFile, diffScroll, diffCursor: safeDiffCursor, ctxIdx, minCrit, collapsed, inputMode, searchQuery },
-    { setPanel, setTreeIdx, setSelectedFile, setDiffScroll, setDiffCursor, setCtxIdx, setMinCrit, setLineFlag, setCollapsed, setInputMode, setSearchQuery, onExport: handleExport, onToggleDiffMode: handleToggleDiffMode, historyPush: history.push, historyGoBack: history.goBack, historyGoForward: history.goForward },
-    { flatTree, diffRows: activeDiffRows, diffs, ctx, bodyH, lineReviews },
+    { panel, treeIdx: safeIdx, selectedFile, diffScroll, diffCursor: safeDiffCursor, ctxIdx, minCrit, collapsed, inputMode, searchQuery, showHelp },
+    { setPanel, setTreeIdx, setSelectedFile, setDiffScroll, setDiffCursor, setCtxIdx, setMinCrit, setLineFlag, setCollapsed, setInputMode, setSearchQuery, setShowHelp, onExport: handleExport, onToggleDiffMode: handleToggleDiffMode, historyPush: history.push, historyGoBack: history.goBack, historyGoForward: history.goForward },
+    { flatTree, diffRows: activeDiffRows, diffs, ctx, bodyH, lineReviews, fileProgress },
   );
 
   // Visible slices
@@ -244,6 +246,9 @@ export function App({ data, rootDir }: AppProps) {
           </>
         )}
       </Box>
+
+      {/* Help overlay */}
+      {showHelp && <HelpOverlay width={size.w} height={bodyH} />}
 
       {/* 3 Panels */}
       <Box flexDirection="row" height={bodyH}>

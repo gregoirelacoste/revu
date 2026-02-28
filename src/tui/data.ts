@@ -38,6 +38,7 @@ function repoToTree(repo: RepoEntry): TreeItem {
       id: f.id,
       sideEffect: allMethods(f).some(m => m.impacted),
     }));
+    fileItems.sort((a, b) => b.crit - a.crit);
 
     if (dir === '') {
       children.push(...fileItems);
@@ -52,6 +53,8 @@ function repoToTree(repo: RepoEntry): TreeItem {
       });
     }
   }
+
+  children.sort((a, b) => b.crit - a.crit);
 
   const repoCrit = repo.files.length > 0
     ? Math.round(Math.max(...repo.files.map(f => f.crit)) * 10) / 10

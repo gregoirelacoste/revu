@@ -1,6 +1,6 @@
 import React from 'react';
 import { Box, Text } from 'ink';
-import { C, critColor, TYPE_ICON } from '../colors.js';
+import { C, critColor, critBar, TYPE_ICON } from '../colors.js';
 import type { FlatItem } from '../types.js';
 
 interface TreeRowProps {
@@ -27,6 +27,9 @@ export function TreeRow({ item, isSelected, isFocused, isCollapsed, width, progr
     icon = ic.icon;
   }
 
+  // CritBar for files
+  const bar = !item.isFolder ? critBar(item.node.crit) : null;
+
   // Progress indicator
   const progressChar = progress === 'complete' ? '\u2713' : progress === 'partial' ? '\u25D0' : ' ';
   const progressColor = progress === 'complete' ? C.green : progress === 'partial' ? C.orange : C.dim;
@@ -34,20 +37,22 @@ export function TreeRow({ item, isSelected, isFocused, isCollapsed, width, progr
   const scoreStr = item.node.crit.toFixed(1);
   const sideEffectLen = item.node.sideEffect ? 2 : 0;
   const branchLen = item.node.branch ? item.node.branch.length + 1 : 0;
-  const prefixLen = 1 + indent.length + 1 + 1; // focus + indent + icon + space
+  const barLen = bar ? 1 : 0;
+  const prefixLen = 1 + indent.length + icon.length + 1; // focus + indent + icon + space
   const progressLen = progress !== undefined ? 2 : 0; // char + space
-  const fixedLen = prefixLen + progressLen + sideEffectLen + branchLen + 1 + scoreStr.length;
+  const fixedLen = barLen + prefixLen + progressLen + sideEffectLen + branchLen + 1 + scoreStr.length;
   const maxNameLen = Math.max(4, width - fixedLen);
   const displayName = item.node.name.length > maxNameLen
     ? item.node.name.slice(0, maxNameLen - 1) + '\u2026'
     : item.node.name;
 
   const nameLen = displayName.length;
-  const usedWidth = prefixLen + progressLen + nameLen + sideEffectLen + branchLen;
+  const usedWidth = barLen + prefixLen + progressLen + nameLen + sideEffectLen + branchLen;
   const padding = Math.max(1, width - usedWidth - scoreStr.length);
 
   return (
     <Box>
+      {bar && <Text color={bar.color}>{bar.char}</Text>}
       <Text color={isFocused ? C.accent : undefined}>
         {isFocused ? '\u25B6' : ' '}
       </Text>
