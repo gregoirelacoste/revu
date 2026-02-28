@@ -49,7 +49,7 @@ export function DLine({ line, width, minCrit, isCursor, flag }: DLineProps) {
       <Text color={prefixColor} bold>{prefix}</Text>
       <Text> </Text>
       {line.hiRanges && line.hiRanges.length > 0 ? (
-        renderHighlighted(line.c, line.hiRanges, textColor, isAdd ? C.green : C.red, maxCodeLen)
+        renderHighlighted(line.c, line.hiRanges, C.dim, isAdd ? C.green : C.red, maxCodeLen)
       ) : (
         <Text color={textColor} bold={line.isSig || (isChanged && lineCrit >= 7)}>{code}</Text>
       )}
