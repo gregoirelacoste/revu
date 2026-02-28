@@ -40,13 +40,14 @@ export function getFileContext(
     ? `${chunks.length} hunk(s) \u00B7 ${stats.reviewed}/${stats.total} (${pct}%)`
     : `${chunks.length} hunk(s) \u00B7 ${diff.path}`;
 
-  // Outgoing imports/injections
+  // Outgoing imports/injections — only to files also changed in this diff
   const outLinks = result.links.filter(l => l.fromFile === diff.path);
   const imports: ImportEntry[] = [];
   const seenImport = new Set<string>();
   for (const link of outLinks) {
-    const targetName = link.toFile.split('/').pop() ?? link.toFile;
     const targetFileId = findFileIdByPath(link.toFile, result);
+    if (!targetFileId || !diffs.has(targetFileId)) continue;
+    const targetName = link.toFile.split('/').pop() ?? link.toFile;
     for (const spec of link.specifiers ?? [link.label]) {
       const key = `${spec}:${targetName}`;
       if (seenImport.has(key)) continue;

@@ -81,23 +81,21 @@ export function ContextPanel({ ctx, ctxIdx, isActive, width, minCrit, diffs, fil
       {allImports.length > 0 && (
         <Box flexDirection="column" marginTop={1}>
           <Text color={C.dim}>{'\u2500'.repeat(Math.max(0, width - 4))}</Text>
-          <Text color={C.dim} bold>{' IMPORTS '}({allImports.length})</Text>
+          <Text color={C.dim} bold>{' DEPENDS ON '}({allImports.length})</Text>
           {allImports.map((imp, i) => {
             const navIdx = filtered.length + i;
             const isFoc = isActive && navIdx === ctxIdx;
-            const hasLink = !!(imp.fileId && diffs.has(imp.fileId));
             const targetDiff = imp.fileId ? diffs.get(imp.fileId) : undefined;
             const typeInfo = targetDiff ? TYPE_ICON[targetDiff.type] : undefined;
             const typeIcon = typeInfo?.icon ?? (imp.type === 'inject' ? 'S' : '\u00B7');
             const typeColor = typeInfo?.color ?? C.dim;
             const progress = imp.fileId ? fileProgress.get(imp.fileId) : undefined;
-            const isDone = progress === 'complete';
             return (
               <Box key={i}>
                 <Text color={isFoc ? C.accent : C.dim}>{isFoc ? '\u25B6' : ' '}</Text>
                 <Text color={typeColor} bold>{typeIcon}</Text>
                 <Text> </Text>
-                <Text color={isDone ? C.dim : isFoc ? C.white : hasLink ? C.cyan : C.dim}>
+                <Text color={progress === 'complete' ? C.dim : isFoc ? C.white : C.cyan}>
                   {imp.name.length > width - 12
                     ? imp.name.slice(0, width - 13) + '\u2026'
                     : imp.name}
