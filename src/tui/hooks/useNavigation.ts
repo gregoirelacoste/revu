@@ -2,6 +2,7 @@
 
 import { useInput, useApp, type Key } from 'ink';
 import type { FlatItem, DiffRow, TuiFileDiff, ContextData, LineFlag } from '../types.js';
+import type { InputMode } from './useInputMode.js';
 
 interface NavState {
   panel: number;
@@ -12,6 +13,7 @@ interface NavState {
   ctxIdx: number;
   minCrit: number;
   collapsed: Set<string>;
+  inputMode: InputMode | null;
 }
 
 interface NavSetters {
@@ -24,6 +26,8 @@ interface NavSetters {
   setMinCrit: (fn: (v: number) => number) => void;
   setLineFlag: (lineKey: string, flag: LineFlag | undefined) => void;
   setCollapsed: (fn: (v: Set<string>) => Set<string>) => void;
+  setInputMode: (v: InputMode | null) => void;
+  onExport?: () => void;
 }
 
 interface NavContext {
@@ -136,6 +140,7 @@ function handleDiffPanel(
     if (input === 'c') { setLineFlag(lineKey, 'ok'); return true; }
     if (input === 'x') { setLineFlag(lineKey, 'bug'); return true; }
     if (input === '?') { setLineFlag(lineKey, 'question'); return true; }
+    if (input === 'n') { setters.setInputMode({ lineKey, draft: '' }); return true; }
   }
   return true;
 }
@@ -187,11 +192,13 @@ export function useNavigation(
 
   useInput((input, key) => {
     try {
+      if (state.inputMode) return;
       if (input === 'q') { exit(); return; }
       if (key.tab && key.shift) { setPanel(p => (p + 2) % 3); return; }
       if (key.tab) { setPanel(p => (p + 1) % 3); return; }
       if (input === '[') { setMinCrit(v => Math.max(0, v - 0.5)); return; }
       if (input === ']') { setMinCrit(v => Math.min(9, v + 0.5)); return; }
+      if (key.meta && input === 'e') { setters.onExport?.(); return; }
 
       if (panel === 0) handleTreePanel(input, key, state, setters, context);
       else if (panel === 1) handleDiffPanel(input, key, state, setters, context);

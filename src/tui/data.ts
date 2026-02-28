@@ -7,6 +7,7 @@ import type {
   TreeItem, FlatItem, TuiFileDiff, DiffRow,
   TuiDiffLine, UsedByEntry,
 } from './types.js';
+import { injectWordDiffRanges } from './word-diff.js';
 
 // ── Tree builder ──
 
@@ -162,6 +163,8 @@ function buildDiffRows(methods: MethodData[]): DiffRow[] {
         reviewLines.push({ n: reviewLineNum, c: d.c, t: 'ctx' });
       }
     }
+
+    injectWordDiffRanges(baseLines, reviewLines);
 
     // Align side-by-side
     const maxLen = Math.max(baseLines.length, reviewLines.length);

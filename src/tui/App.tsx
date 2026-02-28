@@ -1,18 +1,21 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { Box, Text } from 'ink';
 import { C, critColor, FLAG_ICON, FLAG_COLOR } from './colors.js';
 import { useTermSize } from './hooks/useTermSize.js';
 import { useNavigation } from './hooks/useNavigation.js';
 import { useReview } from './hooks/useReview.js';
+import { useInputMode, type InputMode } from './hooks/useInputMode.js';
+import { useReviewProgress } from './hooks/useReviewProgress.js';
 import { Border } from './components/Border.js';
 import { TreeRow } from './components/TreeRow.js';
 import { DLine } from './components/DLine.js';
+import { CommentRows } from './components/CommentRows.js';
 import { ContextPanel } from './components/ContextPanel.js';
 import { StatusBar } from './components/StatusBar.js';
 import { buildTree, flattenTree, buildFileDiffs } from './data.js';
-import { allMethods } from '../core/analyzer/side-effects.js';
 import { getFileContext, getFolderContext, getRepoContext } from './context.js';
-import { computeFileReviewStats, computeGlobalReviewStats } from './review-stats.js';
+import { exportMarkdown } from '../export/markdown-exporter.js';
+import { writeExport } from '../export/write-export.js';
 import type { ScanResult } from '../core/engine.js';
 import type { ContextData } from './types.js';
 
@@ -36,7 +39,31 @@ export function App({ data, rootDir }: AppProps) {
   const [ctxIdx, setCtxIdx] = useState(0);
   const [minCrit, setMinCrit] = useState(0);
   const [diffCursor, setDiffCursor] = useState(0);
-  const { lineReviews, setLineFlag } = useReview(rootDir, data);
+  const [inputMode, setInputMode] = useState<InputMode | null>(null);
+  const { lineReviews, setLineFlag, addLineComment } = useReview(rootDir, data);
+  const { fileProgress, globalStats, sideEffectCount } = useReviewProgress(data, diffs, lineReviews);
+  const [exportMsg, setExportMsg] = useState<string | null>(null);
+
+  const handleExport = useCallback(() => {
+    const exported = exportMarkdown(data, diffs, lineReviews);
+    const paths: string[] = [];
+    const promises: Promise<void>[] = [];
+    for (const [repoName, { markdown, branch }] of exported) {
+      promises.push(
+        writeExport(rootDir, repoName, branch, markdown).then(p => { paths.push(p); }),
+      );
+    }
+    Promise.all(promises).then(() => {
+      setExportMsg(`Exported to ${paths.join(', ')}`);
+      setTimeout(() => setExportMsg(null), 3000);
+    }).catch(err => {
+      setExportMsg(`Export failed: ${err}`);
+      setTimeout(() => setExportMsg(null), 3000);
+    });
+  }, [data, diffs, lineReviews, rootDir]);
+
+  // Inline comment input
+  useInputMode(panel === 1, inputMode, setInputMode, addLineComment);
 
   // Recompute flat tree when collapsed changes
   const flatTree = useMemo(() => flattenTree(tree, collapsed), [tree, collapsed]);
@@ -87,36 +114,6 @@ export function App({ data, rootDir }: AppProps) {
     if (safeDiffCursor !== diffCursor && diffRows.length > 0) setDiffCursor(safeDiffCursor);
   }, [safeDiffCursor, diffCursor, diffRows.length]);
 
-  // File review progress for explorer indicators
-  const fileProgress = useMemo(() => {
-    const map = new Map<string, 'none' | 'partial' | 'complete'>();
-    for (const [fileId, diff] of diffs) {
-      const s = computeFileReviewStats(fileId, diff, lineReviews);
-      if (s.total === 0) map.set(fileId, 'none');
-      else if (s.reviewed >= s.total) map.set(fileId, 'complete');
-      else if (s.reviewed > 0) map.set(fileId, 'partial');
-      else map.set(fileId, 'none');
-    }
-    return map;
-  }, [diffs, lineReviews]);
-
-  // Global review stats (memoized, shared)
-  const globalStats = useMemo(
-    () => computeGlobalReviewStats(diffs, lineReviews),
-    [diffs, lineReviews],
-  );
-
-  // Count files with side-effects (at least one impacted method)
-  const sideEffectCount = useMemo(() => {
-    let count = 0;
-    for (const repo of data.repos) {
-      for (const file of repo.files) {
-        if (allMethods(file).some(m => m.impacted)) count++;
-      }
-    }
-    return count;
-  }, [data]);
-
   const ctx = useMemo((): ContextData | null => {
     const item = flatTree[safeIdx];
     if (!item) return null;
@@ -131,8 +128,8 @@ export function App({ data, rootDir }: AppProps) {
 
   // Navigation
   useNavigation(
-    { panel, treeIdx: safeIdx, selectedFile, diffScroll, diffCursor: safeDiffCursor, ctxIdx, minCrit, collapsed },
-    { setPanel, setTreeIdx, setSelectedFile, setDiffScroll, setDiffCursor, setCtxIdx, setMinCrit, setLineFlag, setCollapsed },
+    { panel, treeIdx: safeIdx, selectedFile, diffScroll, diffCursor: safeDiffCursor, ctxIdx, minCrit, collapsed, inputMode },
+    { setPanel, setTreeIdx, setSelectedFile, setDiffScroll, setDiffCursor, setCtxIdx, setMinCrit, setLineFlag, setCollapsed, setInputMode, onExport: handleExport },
     { flatTree, diffRows, diffs, ctx, bodyH },
   );
 
@@ -202,22 +199,28 @@ export function App({ data, rootDir }: AppProps) {
                 const lineKey = row.reviewLine ? `${selectedFile}:${row.reviewLine.n}` : '';
                 const review = lineReviews.get(lineKey);
                 const flag = review?.flag;
+                const comments = review?.comments ?? [];
                 const isCur = panel === 1 && rowIndex === safeDiffCursor;
                 return (
-                  <Box key={`d${i}`}>
-                    <Box width={halfDiff}>
-                      <DLine line={row.baseLine ?? null} width={halfDiff} minCrit={minCrit} showCrit={false} isCursor={false} />
+                  <Box key={`d${i}`} flexDirection="column">
+                    <Box>
+                      <Box width={halfDiff}>
+                        <DLine line={row.baseLine ?? null} width={halfDiff} minCrit={minCrit} showCrit={false} isCursor={false} />
+                      </Box>
+                      <Text color={C.border}>{'\u2502'}</Text>
+                      <Box width={halfDiff}>
+                        <DLine line={row.reviewLine ?? null} width={halfDiff - 4} minCrit={minCrit} showCrit={true} isCursor={isCur} flag={flag} />
+                      </Box>
+                      {row.reviewLine && (row.reviewLine.t === 'add' || row.reviewLine.t === 'del') ? (
+                        <Text color={flag ? (FLAG_COLOR[flag] ?? C.dim) : C.dim}>
+                          {flag ? ` ${FLAG_ICON[flag]}` : ' \u25CB'}
+                        </Text>
+                      ) : (
+                        <Text>{'  '}</Text>
+                      )}
                     </Box>
-                    <Text color={C.border}>{'\u2502'}</Text>
-                    <Box width={halfDiff}>
-                      <DLine line={row.reviewLine ?? null} width={halfDiff - 4} minCrit={minCrit} showCrit={true} isCursor={isCur} flag={flag} />
-                    </Box>
-                    {row.reviewLine && (row.reviewLine.t === 'add' || row.reviewLine.t === 'del') ? (
-                      <Text color={flag ? (FLAG_COLOR[flag] ?? C.dim) : C.dim}>
-                        {flag ? ` ${FLAG_ICON[flag]}` : ' \u25CB'}
-                      </Text>
-                    ) : (
-                      <Text>{'  '}</Text>
+                    {(comments.length > 0 || inputMode?.lineKey === lineKey) && (
+                      <CommentRows comments={comments} inputMode={inputMode} lineKey={lineKey} width={diffW} />
                     )}
                   </Box>
                 );
@@ -242,7 +245,7 @@ export function App({ data, rootDir }: AppProps) {
       </Box>
 
       {/* Status bar */}
-      <StatusBar repoCount={data.repos.length} stats={globalStats} sideEffects={sideEffectCount} width={size.w} />
+      <StatusBar repoCount={data.repos.length} stats={globalStats} sideEffects={sideEffectCount} width={size.w} exportMsg={exportMsg} />
     </Box>
   );
 }
