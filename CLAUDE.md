@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 TUI-based code review tool for multi-service architectures. Designed for terminal use with Ink (React for terminals). Target: 3-panel layout (Explorer / Diff / Context). Philosophy: "review without reading, reading secondarily."
 
+Scoring is **config-driven** via `.revu/config.json` at the project root. Each project can define its own criticality weights, file type scores, security keywords, and line-level multipliers. Default config is generated if absent.
+
 ## Commands
 
 ```bash
@@ -24,15 +26,34 @@ TypeScript CLI app using Ink (React TUI framework). ES modules throughout. Stric
 
 The scan engine (`core/engine.ts`) orchestrates the full analysis:
 
-1. **Scanner** (`scanner/repo-scanner.ts`) — walks root dir for `.git` repos, gets current branch, filters out main/develop/master
-2. **Diff Parser** (`scanner/diff-parser.ts`) — runs `git diff base...HEAD --unified=3`, parses unified diff into hunks/lines
-3. **AST Parser** (`analyzer/ast-parser.ts`) — parses changed `.ts` files with `@typescript-eslint/typescript-estree`, extracts methods, constants, imports, injections
-4. **File Classifier** (`analyzer/file-classifier.ts`) — pattern-based classification (`.service.ts` → service, `.controller.ts` → controller, etc.)
-5. **Link Detector** (`analyzer/link-detector.ts`) — detects imports, NestJS injections, HTTP endpoints; deduplicates by from+to+type
-6. **Criticality Scorer** (`scoring/criticality.ts`) — weighted scoring (type 0.3, changes 0.3, deps 0.2, security keywords 0.2), scale 0–10
-7. **Engine** (`engine.ts`) — orchestrates steps 1-6, returns `ScanResult { repos[], links[], allFiles[] }`
+1. **Config Loader** (`scoring/config.ts`) — loads `.revu/config.json`, deep-merges with defaults
+2. **Scanner** (`scanner/repo-scanner.ts`) — walks root dir for `.git` repos, gets current branch, filters out main/develop/master
+3. **Diff Parser** (`scanner/diff-parser.ts`) — runs `git diff base...HEAD --unified=3`, parses unified diff into hunks/lines
+4. **AST Parser** (`analyzer/ast-parser.ts`) — parses changed `.ts/.tsx` files with `@typescript-eslint/typescript-estree`, extracts methods, constants, imports, injections
+5. **File Classifier** (`analyzer/file-classifier.ts`) — pattern-based classification (`.service.ts` → service, `.controller.ts` → controller, `.resolver.ts` → service, etc.)
+6. **Link Detector** (`analyzer/link-detector.ts`) — detects imports, NestJS injections; keyed by file path for correct riskCrit lookup
+7. **Diff Extractor** (`analyzer/diff-extractor.ts`) — builds method/constant diff data, compares old vs new AST, detects formatting-only changes
+8. **Criticality Scorer** (`scoring/criticality.ts`) — config-driven weighted scoring (file type, change volume, dependencies, security context), scale 0–10
+9. **Engine** (`engine.ts`) — orchestrates steps 1-8, enriches with real dependency counts post-link-detection, returns `ScanResult`
 
 Review persistence: `review/review-store.ts` — saves/loads JSON to `.revu/reviews/`
+
+### Scoring System
+
+Scoring is the heart of REVU. All weights come from `.revu/config.json`:
+
+```
+score_file = (typeWeight × w.fileType + changeWeight × w.changeVolume + depWeight × w.dependencies + securityWeight × w.securityContext) × 10
+```
+
+- `typeWeight`: from `config.scoring.fileTypes[fileType]`
+- `changeWeight`: `min(1, (add + del) / 200)`
+- `depWeight`: `min(1, inboundLinks / 10)` — computed from real link detection
+- `securityWeight`: from `config.scoring.securityKeywords` matched against file path
+
+Method criticality factors in: file score (40%), usage count (30%), signature change (20%), security context (10%).
+
+Line-level multipliers (`config.scoring.lineCriticality`) will modulate per-line intensity in the TUI.
 
 ### TUI (src/tui/) — In Progress
 
@@ -41,16 +62,21 @@ Reference POC: `v2/POC/revu-tui/`
 
 ### Shared Types
 
-`src/core/types.ts` is the source of truth. Key types: `FileEntry`, `RepoEntry`, `ScanResult` (from engine.ts), `DetectedLink`, `ParsedFile`, `MethodData`, `ReviewData`.
+`src/core/types.ts` is the source of truth. Key types:
+- Config: `RevuConfig`, `ScoringConfig`, `ScoringWeights`, `LineCritMultipliers`, `SecurityKeywords`
+- Engine output: `FileEntry`, `RepoEntry`, `ScanResult` (from engine.ts)
+- Pipeline: `DetectedLink`, `ParsedFile`, `MethodData`
+- Review: `ReviewData`, `FileReview`, `MethodReview`
 
 ## Key Conventions
 
-- File extensions determine classification: `.service.ts`, `.controller.ts`, `.dto.ts`, `.guard.ts`, `.module.ts`, etc.
-- Links between files are typed: `import`, `inject`, `http`, `grpc`, `type`, `side-effect`
-- Criticality is a 0–10 float controlling visual weight
+- File extensions determine classification: `.service.ts`, `.controller.ts`, `.dto.ts`, `.guard.ts`, `.module.ts`, `.resolver.ts`, `.middleware.ts`, `.filter.ts`, `.strategy.ts`, etc.
+- Links between files are typed: `import`, `inject`, `type` (more link types planned)
+- Criticality is a 0–10 float driven by project config
 - Review flags: `ok`, `bug`, `test`, `question`
 - Method status: `new`, `mod`, `unch`, `del`
 - Diff lines encoded as `{ t: 'a'|'d'|'c', c: string }` (add/delete/context)
+- `fileCritMap` is keyed by file **path** (not generated ID) to ensure correct riskCrit on links
 
 ## Environment
 

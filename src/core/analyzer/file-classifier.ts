@@ -1,16 +1,20 @@
 import type { FileType } from '../types.js';
 
 const PATTERNS: Array<[RegExp, FileType]> = [
-  [/\.controller\.ts$/, 'controller'],
-  [/\.service\.ts$/, 'service'],
-  [/\.module\.ts$/, 'module'],
-  [/\.component\.ts$/, 'component'],
-  [/\.guard\.ts$/, 'guard'],
-  [/\.dto\.ts$/, 'dto'],
-  [/\.model\.ts$/, 'model'],
-  [/\.interceptor\.ts$/, 'interceptor'],
-  [/\.pipe\.ts$/, 'pipe'],
-  [/\.spec\.ts$/, 'spec'],
+  [/\.controller\.tsx?$/, 'controller'],
+  [/\.service\.tsx?$/, 'service'],
+  [/\.module\.tsx?$/, 'module'],
+  [/\.component\.tsx?$/, 'component'],
+  [/\.guard\.tsx?$/, 'guard'],
+  [/\.dto\.tsx?$/, 'dto'],
+  [/\.model\.tsx?$/, 'model'],
+  [/\.interceptor\.tsx?$/, 'interceptor'],
+  [/\.pipe\.tsx?$/, 'pipe'],
+  [/\.resolver\.tsx?$/, 'service'],
+  [/\.middleware\.tsx?$/, 'interceptor'],
+  [/\.filter\.tsx?$/, 'interceptor'],
+  [/\.strategy\.tsx?$/, 'service'],
+  [/\.spec\.tsx?$/, 'spec'],
   [/\.html$/, 'html'],
   [/\.scss$/, 'scss'],
   [/\.css$/, 'css'],
@@ -24,8 +28,8 @@ export function classifyFile(filePath: string): FileType {
   for (const [pattern, type] of PATTERNS) {
     if (pattern.test(filePath)) return type;
   }
-  if (DTO_DIR.test(filePath) && filePath.endsWith('.ts')) return 'dto';
-  if (filePath.endsWith('.ts')) return 'unknown';
+  if (DTO_DIR.test(filePath) && /\.tsx?$/.test(filePath)) return 'dto';
+  if (/\.tsx?$/.test(filePath)) return 'unknown';
   return 'unknown';
 }
 
@@ -34,5 +38,5 @@ export function isDisplayableFile(type: FileType): boolean {
 }
 
 export function isTypeScriptFile(path: string): boolean {
-  return path.endsWith('.ts') && !path.endsWith('.spec.ts');
+  return /\.tsx?$/.test(path) && !path.endsWith('.spec.ts') && !path.endsWith('.spec.tsx');
 }

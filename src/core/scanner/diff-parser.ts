@@ -11,7 +11,9 @@ export async function computeDiff(repoPath: string, baseBranch: string): Promise
       { cwd: repoPath, maxBuffer: 10 * 1024 * 1024 },
     );
     return parseDiff(stdout);
-  } catch {
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`\x1b[33m⚠\x1b[0m git diff failed for ${repoPath} (base: ${baseBranch}): ${msg}`);
     return [];
   }
 }

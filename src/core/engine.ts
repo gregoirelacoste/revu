@@ -8,15 +8,18 @@ import { classifyFile, isDisplayableFile, isTypeScriptFile } from './analyzer/fi
 import { parseTypeScript } from './analyzer/ast-parser.js';
 import { detectLinks } from './analyzer/link-detector.js';
 import { computeFileCriticality, computeMethodCriticality } from './scoring/criticality.js';
+import { loadConfig } from './scoring/config.js';
+import { buildMethodData, buildConstantData } from './analyzer/diff-extractor.js';
 import type {
-  ParsedFile, FileDiff, MethodData, DiffLineType,
-  DetectedLink, RepoInfo, MethodStatus,
+  ParsedFile, FileDiff, MethodData,
+  DetectedLink, RepoInfo, RevuConfig, ScoringConfig,
 } from './types.js';
 
 // ── Result types ──
 
 export interface FileEntry {
   id: string;
+  path: string;
   name: string;
   ext: string;
   dir: string;
@@ -39,20 +42,22 @@ export interface ScanResult {
   repos: RepoEntry[];
   links: DetectedLink[];
   allFiles: ParsedFile[];
+  config: RevuConfig;
 }
 
 // ── Main orchestrator ──
 
 export async function scan(rootDir: string, baseBranch = 'develop'): Promise<ScanResult> {
+  const config = await loadConfig(rootDir);
   const repos = await scanRepos(rootDir, baseBranch);
-  if (repos.length === 0) return { repos: [], links: [], allFiles: [] };
+  if (repos.length === 0) return { repos: [], links: [], allFiles: [], config };
 
   const allParsedFiles: ParsedFile[] = [];
   const repoEntries: RepoEntry[] = [];
 
   for (const repo of repos) {
     try {
-      const result = await processRepo(repo);
+      const result = await processRepo(repo, config.scoring);
       if (!result) continue;
       allParsedFiles.push(...result.parsedFiles);
       repoEntries.push(result.entry);
@@ -61,23 +66,30 @@ export async function scan(rootDir: string, baseBranch = 'develop'): Promise<Sca
     }
   }
 
+  // Build crit map keyed by file PATH (not id) for link-detector
   const fileCritMap = buildFileCritMap(repoEntries);
   const links = detectLinks(allParsedFiles, fileCritMap);
 
-  return { repos: repoEntries, links, allFiles: allParsedFiles };
+  // Enrich files with real dependency counts, then recompute criticality
+  enrichWithDependencies(repoEntries, links, config.scoring);
+
+  return { repos: repoEntries, links, allFiles: allParsedFiles, config };
 }
 
 // ── Per-repo processing ──
 
-async function processRepo(repo: RepoInfo): Promise<{ parsedFiles: ParsedFile[]; entry: RepoEntry } | null> {
+async function processRepo(
+  repo: RepoInfo, scoring: ScoringConfig,
+): Promise<{ parsedFiles: ParsedFile[]; entry: RepoEntry } | null> {
   const diffs = await computeDiff(repo.path, repo.baseBranch);
   const parsedFiles = await parseRepoFiles(repo, diffs);
 
   const files: FileEntry[] = [];
   for (const pf of parsedFiles) {
-    const diff = diffs.find(d => d.path === pf.path)!;
-    const entry = await buildFileEntry(pf, diff, diffs, repo);
-    if (entry) files.push(entry);
+    const diff = diffs.find(d => d.path === pf.path);
+    if (!diff) continue;
+    const entry = await buildFileEntry(pf, diff, diffs, repo, scoring);
+    files.push(entry);
   }
 
   if (files.length === 0) return null;
@@ -96,7 +108,10 @@ async function parseRepoFiles(repo: RepoInfo, diffs: FileDiff[]): Promise<Parsed
 
     const fullPath = join(repo.path, diff.path);
     const code = await readFile(fullPath, 'utf-8').catch(() => null);
-    if (!code) continue;
+    if (!code) {
+      console.warn(`\x1b[33m⚠\x1b[0m Cannot read ${diff.path}, skipping`);
+      continue;
+    }
 
     if (isTypeScriptFile(diff.path)) {
       const ast = parseTypeScript(code);
@@ -120,19 +135,25 @@ async function parseRepoFiles(repo: RepoInfo, diffs: FileDiff[]): Promise<Parsed
 // ── File entry builder ──
 
 async function buildFileEntry(
-  pf: ParsedFile, diff: FileDiff, diffs: FileDiff[], repo: RepoInfo,
+  pf: ParsedFile, diff: FileDiff, diffs: FileDiff[],
+  repo: RepoInfo, scoring: ScoringConfig,
 ): Promise<FileEntry> {
-  const hasSpec = diffs.some(d => d.path === pf.path.replace('.ts', '.spec.ts'));
-  const fileCrit = computeFileCriticality(pf.fileType, diff.additions, diff.deletions, 0, pf.path);
+  const hasSpec = diffs.some(d =>
+    d.path === pf.path.replace(/\.tsx?$/, '.spec.ts') ||
+    d.path === pf.path.replace(/\.tsx?$/, '.spec.tsx'),
+  );
+  // Initial crit with depCount=0, will be recomputed after link detection
+  const fileCrit = computeFileCriticality(scoring, pf.fileType, diff.additions, diff.deletions, 0, pf.path);
 
   const oldCode = await getFileAtBranch(repo.path, repo.baseBranch, pf.path);
   const oldAst = oldCode ? parseTypeScript(oldCode) : null;
 
-  const methods = buildMethodData(pf, diff, oldAst, fileCrit);
+  const methods = buildMethodData(pf, diff, oldAst, fileCrit, scoring);
   const constants = buildConstantData(pf, diff, oldAst, fileCrit);
 
   return {
     id: `f-${repo.name}-${pf.path.replace(/\//g, '-').replace(/\./g, '_')}`,
+    path: pf.path,
     name: basename(pf.path, extname(pf.path)),
     ext: extname(pf.path),
     dir: dirname(pf.path),
@@ -146,155 +167,56 @@ async function buildFileEntry(
   };
 }
 
-// ── Crit map builder ──
+// ── Crit map: keyed by file PATH for link-detector ──
 
 function buildFileCritMap(repos: RepoEntry[]): Map<string, number> {
   const map = new Map<string, number>();
   for (const r of repos) {
     for (const f of r.files) {
-      map.set(f.id, f.crit);
+      map.set(f.path, f.crit);
     }
   }
   return map;
 }
 
-// ── Method/Constant data builders ──
+// ── Enrich with real dependency counts ──
 
-function buildMethodData(
-  pf: ParsedFile,
-  diff: FileDiff,
-  oldAst: { methods: { name: string; signature: string }[]; constants: { name: string }[] } | null,
-  fileCrit: number,
-): MethodData[] {
-  const result: MethodData[] = pf.methods.map(m => {
-    const oldMethod = oldAst?.methods.find(om => om.name === m.name);
-    const isNew = !oldMethod;
-    const sigChanged = !isNew && oldMethod.signature !== m.signature;
-    const rawDiff = extractMethodDiff(m.startLine, m.endLine, diff, isNew);
-    const formatOnly = !isNew && isFormattingOnly(rawDiff);
-    const methodDiff = formatOnly ? [] : rawDiff;
-    const status: MethodStatus = isNew ? 'new' : methodDiff.length > 0 ? 'mod' : 'unch';
-    const crit = computeMethodCriticality(fileCrit, 1, 5, sigChanged, pf.path);
+function enrichWithDependencies(repos: RepoEntry[], links: DetectedLink[], scoring: ScoringConfig): void {
+  // Count how many files depend on each file (inbound links)
+  const depCount = new Map<string, number>();
+  for (const link of links) {
+    depCount.set(link.toFile, (depCount.get(link.toFile) ?? 0) + 1);
+  }
 
-    return {
-      name: m.name, status, crit, usages: 1, tested: false,
-      sigChanged, httpVerb: m.httpVerb, diff: methodDiff,
-    };
-  });
+  // Count max usages across all methods for normalization
+  const methodUsages = new Map<string, number>();
+  for (const link of links) {
+    if (link.methodName) {
+      const key = `${link.toFile}:${link.methodName}`;
+      methodUsages.set(key, (methodUsages.get(key) ?? 0) + 1);
+    }
+  }
+  const maxUsage = Math.max(1, ...methodUsages.values());
 
-  if (oldAst?.methods) {
-    const newNames = new Set(pf.methods.map(m => m.name));
-    for (const om of oldAst.methods) {
-      if (!newNames.has(om.name)) {
-        const delDiff = extractDeletedBlockDiff(om.name, diff);
-        if (delDiff.length === 0) continue;
-        result.push({
-          name: om.name, status: 'del',
-          crit: Math.round(fileCrit * 0.8 * 10) / 10,
-          usages: 0, tested: false, sigChanged: false, diff: delDiff,
-        });
+  for (const repo of repos) {
+    for (const file of repo.files) {
+      const deps = depCount.get(file.path) ?? 0;
+      if (deps > 0) {
+        // Recompute with real dependency count
+        file.crit = computeFileCriticality(
+          scoring, file.type, file.add, file.del, deps, `${file.dir}/${file.name}${file.ext}`,
+        );
+      }
+
+      for (const m of file.methods) {
+        const key = `${file.path}:${m.name}`;
+        const usages = methodUsages.get(key) ?? 1;
+        m.usages = usages;
+        m.crit = computeMethodCriticality(
+          scoring, file.crit, usages, maxUsage, m.sigChanged, `${file.dir}/${file.name}${file.ext}`,
+        );
       }
     }
   }
-
-  return result;
 }
 
-function buildConstantData(
-  pf: ParsedFile, diff: FileDiff,
-  oldAst: { methods: { name: string; signature: string }[]; constants: { name: string }[] } | null,
-  fileCrit: number,
-): MethodData[] {
-  const result = pf.constants.map(c => {
-    const rawDiff = extractMethodDiff(c.startLine, c.endLine, diff, true);
-    if (rawDiff.length === 0 || isFormattingOnly(rawDiff)) return null;
-    return {
-      name: c.name, status: 'new' as MethodStatus,
-      crit: Math.round(fileCrit * 0.6 * 10) / 10,
-      usages: 1, tested: false, sigChanged: false,
-      isType: c.isType, diff: rawDiff,
-    };
-  }).filter(Boolean) as MethodData[];
-
-  if (oldAst?.constants) {
-    const newNames = new Set(pf.constants.map(c => c.name));
-    for (const oc of oldAst.constants) {
-      if (!newNames.has(oc.name)) {
-        const delDiff = extractDeletedBlockDiff(oc.name, diff);
-        if (delDiff.length === 0) continue;
-        result.push({
-          name: oc.name, status: 'del',
-          crit: Math.round(fileCrit * 0.5 * 10) / 10,
-          usages: 0, tested: false, sigChanged: false, diff: delDiff,
-        });
-      }
-    }
-  }
-
-  return result;
-}
-
-// ── Formatting filter ──
-
-function normalizeLine(s: string): string {
-  return s.trim().replace(/\s+/g, ' ').replace(/[;,]$/g, '').replace(/'/g, '"');
-}
-
-function isFormattingOnly(diff: Array<{ t: DiffLineType; c: string }>): boolean {
-  if (diff.length === 0) return true;
-  const adds = diff.filter(d => d.t === 'a').map(d => normalizeLine(d.c));
-  const dels = diff.filter(d => d.t === 'd').map(d => normalizeLine(d.c));
-  if (adds.length === 0 && dels.length === 0) return true;
-  if (adds.length !== dels.length) return false;
-  const sortedAdds = [...adds].sort();
-  const sortedDels = [...dels].sort();
-  return sortedAdds.every((a, i) => a === sortedDels[i]);
-}
-
-// ── Diff extraction ──
-
-function extractDeletedBlockDiff(
-  name: string, diff: FileDiff,
-): Array<{ t: DiffLineType; c: string }> {
-  const result: Array<{ t: DiffLineType; c: string }> = [];
-  for (const hunk of diff.hunks) {
-    const delBlock: string[] = [];
-    for (const line of hunk.lines) {
-      if (line.type === 'del') {
-        delBlock.push(line.content);
-      } else {
-        if (delBlock.some(l => l.includes(name))) {
-          for (const dl of delBlock) result.push({ t: 'd', c: dl });
-        }
-        delBlock.length = 0;
-      }
-    }
-    if (delBlock.some(l => l.includes(name))) {
-      for (const dl of delBlock) result.push({ t: 'd', c: dl });
-    }
-  }
-  return result;
-}
-
-function extractMethodDiff(
-  startLine: number, endLine: number, diff: FileDiff, isNew: boolean,
-): Array<{ t: DiffLineType; c: string }> {
-  const result: Array<{ t: DiffLineType; c: string }> = [];
-  for (const hunk of diff.hunks) {
-    let newLine = hunk.newStart;
-    for (const line of hunk.lines) {
-      if (line.type === 'del') {
-        if (newLine >= startLine && newLine <= endLine + 5) {
-          result.push({ t: 'd', c: line.content });
-        }
-        continue;
-      }
-      if (newLine >= startLine && newLine <= endLine) {
-        if (line.type === 'add') result.push({ t: 'a', c: line.content });
-        else if (line.type === 'context') result.push({ t: 'c', c: line.content });
-      }
-      newLine++;
-    }
-  }
-  return result;
-}

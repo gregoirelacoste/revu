@@ -93,6 +93,59 @@ export interface DetectedLink {
   specifiers?: string[];
 }
 
+// ── Scoring config (.revu/config.json) ──
+
+export interface ScoringWeights {
+  fileType: number;
+  changeVolume: number;
+  dependencies: number;
+  securityContext: number;
+}
+
+export interface LineCritMultipliers {
+  signatureChange: number;
+  returnTypeChange: number;
+  parameterChange: number;
+  guardDecorator: number;
+  newDependencyInjection: number;
+  errorHandling: number;
+  regularCode: number;
+  comment: number;
+  import: number;
+  whitespace: number;
+}
+
+export interface SecurityKeywords {
+  high: string[];
+  medium: string[];
+  low: string[];
+}
+
+export interface SecurityBonus {
+  high: number;
+  medium: number;
+  low: number;
+}
+
+export interface ScoringConfig {
+  weights: ScoringWeights;
+  fileTypes: Record<string, number>;
+  securityKeywords: SecurityKeywords;
+  securityBonus: SecurityBonus;
+  lineCriticality: LineCritMultipliers;
+}
+
+export interface RevuConfig {
+  version: number;
+  stack: string;
+  scoring: ScoringConfig;
+  rules: {
+    alwaysShow: string[];
+    sideEffectDetection: boolean;
+    minCritForDisplay: number;
+  };
+}
+
 // ── Method/Constant diff data ──
 
 export interface MethodData {

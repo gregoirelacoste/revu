@@ -1,13 +1,16 @@
-import { basename, dirname, resolve, relative } from 'node:path';
+import { basename, dirname, join, normalize } from 'node:path';
 import type { ParsedFile, DetectedLink } from '../types.js';
 
+/**
+ * fileCritMap is keyed by file path (e.g. "src/cases/case.service.ts"),
+ * NOT by generated IDs. Callers must ensure this.
+ */
 export function detectLinks(files: ParsedFile[], fileCritMap: Map<string, number>): DetectedLink[] {
   const links: DetectedLink[] = [];
   const fileByPath = new Map(files.map(f => [f.path, f]));
   const fileByClassName = buildClassNameIndex(files);
 
   for (const file of files) {
-    // Import links
     for (const imp of file.imports) {
       const resolved = resolveImportPath(file.path, imp.source, fileByPath);
       if (!resolved) continue;
@@ -29,7 +32,6 @@ export function detectLinks(files: ParsedFile[], fileCritMap: Map<string, number
       });
     }
 
-    // NestJS injection links
     for (const inj of file.injections) {
       const targetPath = fileByClassName.get(inj.typeName);
       if (!targetPath) continue;
@@ -48,7 +50,6 @@ export function detectLinks(files: ParsedFile[], fileCritMap: Map<string, number
     }
   }
 
-  // Deduplicate by from+to+type
   const seen = new Set<string>();
   return links.filter(l => {
     const key = `${l.fromFile}|${l.toFile}|${l.type}`;
@@ -80,18 +81,15 @@ function resolveImportPath(
   if (!importSource.startsWith('.')) return null;
 
   const fromDir = dirname(fromPath);
+  const resolved = normalize(join(fromDir, importSource)).replace(/\\/g, '/');
   const candidates = [
-    resolve(fromDir, importSource + '.ts'),
-    resolve(fromDir, importSource + '/index.ts'),
-    resolve(fromDir, importSource),
+    resolved + '.ts',
+    resolved + '/index.ts',
+    resolved,
   ];
 
   for (const candidate of candidates) {
-    // Normalize to relative paths that match our file keys
-    for (const [path] of fileByPath) {
-      if (path.endsWith(relative('.', candidate).replace(/\\/g, '/'))) return path;
-      if (candidate.endsWith(path)) return path;
-    }
+    if (fileByPath.has(candidate)) return candidate;
   }
 
   return null;

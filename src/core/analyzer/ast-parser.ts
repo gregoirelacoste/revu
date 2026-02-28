@@ -32,12 +32,6 @@ export function parseTypeScript(code: string): ASTResult {
         .filter(Boolean) as string[];
       const source = typeof node.source.value === 'string' ? node.source.value : '';
       imports.push({ specifiers, source });
-      constants.push({
-        name: `import:${source}`,
-        startLine: node.loc.start.line,
-        endLine: node.loc.end.line,
-        isType: false,
-      });
       continue;
     }
 
@@ -161,8 +155,9 @@ function unwrapExport(node: TSESTree.Statement): TSESTree.Statement {
     return node.declaration as TSESTree.Statement;
   }
   if (node.type === 'ExportDefaultDeclaration' && node.declaration) {
-    if ((node.declaration as TSESTree.Statement).type) {
-      return node.declaration as TSESTree.Statement;
+    const decl = node.declaration;
+    if (decl.type === 'ClassDeclaration' || decl.type === 'FunctionDeclaration' || decl.type === 'TSEnumDeclaration') {
+      return decl as unknown as TSESTree.Statement;
     }
   }
   return node;
@@ -315,5 +310,17 @@ function formatType(node: TSESTree.TypeNode): string {
   if (node.type === 'TSBooleanKeyword') return 'boolean';
   if (node.type === 'TSStringKeyword') return 'string';
   if (node.type === 'TSNumberKeyword') return 'number';
+  if (node.type === 'TSAnyKeyword') return 'any';
+  if (node.type === 'TSNullKeyword') return 'null';
+  if (node.type === 'TSUndefinedKeyword') return 'undefined';
+  if (node.type === 'TSObjectKeyword') return 'object';
+  if (node.type === 'TSArrayType') return `${formatType(node.elementType)}[]`;
+  if (node.type === 'TSUnionType') return node.types.map(formatType).join(' | ');
+  if (node.type === 'TSIntersectionType') return node.types.map(formatType).join(' & ');
+  if (node.type === 'TSLiteralType') {
+    if (node.literal.type === 'Literal') return String(node.literal.value);
+    return 'literal';
+  }
+  if (node.type === 'TSTupleType') return `[${node.elementTypes.map(formatType).join(', ')}]`;
   return 'unknown';
 }
