@@ -32,7 +32,7 @@ export type DiffMode = 'unified' | 'side-by-side';
 // ── Diff panel ──
 
 export interface DiffRow {
-  type: 'hunkHeader' | 'diffRow';
+  type: 'hunkHeader' | 'hunkFooter' | 'diffRow';
   method: string;
   methodCrit: number;
   label: string;

@@ -110,11 +110,14 @@ export function buildFileDiffs(result: ScanResult): Map<string, TuiFileDiff> {
   return diffs;
 }
 
+const HUNK_FOOTER_THRESHOLD = 8;
+
 function buildDiffRows(methods: MethodData[]): DiffRow[] {
   const rows: DiffRow[] = [];
 
   for (const m of methods) {
     const label = methodLabel(m);
+    const hunkStart = rows.length;
     rows.push({
       type: 'hunkHeader',
       method: m.name,
@@ -134,6 +137,9 @@ function buildDiffRows(methods: MethodData[]): DiffRow[] {
           baseLine: { n: delLineNum, c: d.c, t: 'del', crit: m.crit },
           reviewLine: null,
         });
+      }
+      if (rows.length - hunkStart - 1 >= HUNK_FOOTER_THRESHOLD) {
+        rows.push({ type: 'hunkFooter', method: m.name, methodCrit: m.crit, label });
       }
       continue;
     }
@@ -178,6 +184,10 @@ function buildDiffRows(methods: MethodData[]): DiffRow[] {
         reviewLine: reviewLines[i] ?? null,
       });
     }
+
+    if (rows.length - hunkStart - 1 >= HUNK_FOOTER_THRESHOLD) {
+      rows.push({ type: 'hunkFooter', method: m.name, methodCrit: m.crit, label });
+    }
   }
 
   return rows;
@@ -203,7 +213,7 @@ export function buildUnifiedRows(rows: DiffRow[]): DiffRow[] {
   };
 
   for (const row of rows) {
-    if (row.type === 'hunkHeader') {
+    if (row.type === 'hunkHeader' || row.type === 'hunkFooter') {
       flush();
       out.push(row);
       continue;

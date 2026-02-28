@@ -2,6 +2,7 @@
 
 import { useInput, useApp, type Key } from 'ink';
 import type { FlatItem, DiffRow, TuiFileDiff, ContextData, LineFlag } from '../types.js';
+import type { LineReview } from './useReview.js';
 import type { InputMode } from './useInputMode.js';
 import type { NavPos } from './useNavHistory.js';
 
@@ -43,6 +44,7 @@ interface NavContext {
   diffs: Map<string, TuiFileDiff>;
   ctx: ContextData | null;
   bodyH: number;
+  lineReviews: Map<string, LineReview>;
 }
 
 function handleTreePanel(
@@ -83,6 +85,22 @@ function handleTreePanel(
       setSelectedFile(item.node.id);
       setDiffScroll(() => 0);
       setDiffCursor(() => 0);
+    }
+    return true;
+  }
+
+  if (input === 'c' && !item.isFolder && item.node.id) {
+    const fileDiff = diffs.get(item.node.id);
+    if (fileDiff) {
+      const { lineReviews } = context;
+      for (const row of fileDiff.rows) {
+        if (row.type === 'diffRow' && row.reviewLine) {
+          const lineKey = `${item.node.id}:${row.reviewLine.n}`;
+          if (lineReviews.get(lineKey)?.flag !== 'ok') {
+            setters.setLineFlag(lineKey, 'ok');
+          }
+        }
+      }
     }
     return true;
   }
@@ -226,9 +244,10 @@ export function useNavigation(
 
       // Search mode: capture all input
       if (state.searchQuery !== null) {
-        if (key.escape) { setters.setSearchQuery(null); return; }
-        if (key.return) {
-          // Select focused file and close search
+        // Tab closes search and falls through to panel switch below
+        if (key.tab) { setters.setSearchQuery(null); }
+        else if (key.escape) { setters.setSearchQuery(null); return; }
+        else if (key.return) {
           const item = context.flatTree[state.treeIdx];
           if (item && !item.isFolder && item.node.id && context.diffs.has(item.node.id)) {
             setters.setSelectedFile(item.node.id);
@@ -238,25 +257,36 @@ export function useNavigation(
           }
           setters.setSearchQuery(null);
           return;
-        }
-        if (key.backspace || key.delete) {
+        } else if (key.backspace || key.delete) {
           setters.setSearchQuery(state.searchQuery.slice(0, -1) || '');
           setters.setTreeIdx(() => 0);
           return;
-        }
-        if (key.upArrow) { setters.setTreeIdx(i => Math.max(0, i - 1)); return; }
-        if (key.downArrow) { setters.setTreeIdx(i => Math.min(context.flatTree.length - 1, i + 1)); return; }
-        if (input && !key.ctrl && !key.meta && input.length === 1 && input >= ' ') {
+        } else if (key.upArrow) { setters.setTreeIdx(i => Math.max(0, i - 1)); return; }
+        else if (key.downArrow) { setters.setTreeIdx(i => Math.min(context.flatTree.length - 1, i + 1)); return; }
+        else if (input && !key.ctrl && !key.meta && input.length === 1 && input >= ' ') {
           setters.setSearchQuery(state.searchQuery + input);
           setters.setTreeIdx(() => 0);
           return;
-        }
-        return;
+        } else { return; }
       }
 
       if (input === 'q') { exit(); return; }
-      if (key.tab && key.shift) { setPanel(p => (p + 2) % 3); return; }
-      if (key.tab) { setPanel(p => (p + 1) % 3); return; }
+      if (key.tab && key.shift) {
+        if (panel === 0) {
+          const item = context.flatTree[state.treeIdx];
+          if (item && !item.isFolder && item.node.id && context.diffs.has(item.node.id))
+            setters.setSelectedFile(item.node.id);
+        }
+        setPanel(p => (p + 2) % 3); return;
+      }
+      if (key.tab) {
+        if (panel === 0) {
+          const item = context.flatTree[state.treeIdx];
+          if (item && !item.isFolder && item.node.id && context.diffs.has(item.node.id))
+            setters.setSelectedFile(item.node.id);
+        }
+        setPanel(p => (p + 1) % 3); return;
+      }
       if (input === '[') { setMinCrit(v => Math.max(0, v - 0.5)); return; }
       if (input === ']') { setMinCrit(v => Math.min(9, v + 0.5)); return; }
       if (key.meta && input === 'e') { setters.onExport?.(); return; }

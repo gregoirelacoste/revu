@@ -19,7 +19,6 @@ export function ContextPanel({ ctx, ctxIdx, isActive, width, minCrit, diffs, fil
   }
 
   const filtered = ctx.chunks.filter(c => c.crit >= minCrit);
-  const navImports = (ctx.imports ?? []).filter(imp => imp.fileId && diffs.has(imp.fileId));
   const allImports = ctx.imports ?? [];
   const stats = ctx.reviewStats;
 

@@ -124,13 +124,23 @@ export function App({ data, rootDir }: AppProps) {
     setDiffScroll(0);
   }, [canSideBySide]);
 
-  // Tree scroll: keep treeIdx visible
-  const treeScroll = useMemo(() => {
-    if (flatTree.length <= treeVisibleH) return 0;
+  // Tree scroll: edge-based, computed synchronously via ref (no one-frame lag)
+  const treeScrollRef = useRef(0);
+  if (flatTree.length <= treeVisibleH) {
+    treeScrollRef.current = 0;
+  } else {
     const maxScroll = flatTree.length - treeVisibleH;
-    if (safeIdx < treeVisibleH / 2) return 0;
-    return Math.min(maxScroll, Math.max(0, safeIdx - Math.floor(treeVisibleH / 2)));
-  }, [safeIdx, flatTree.length, treeVisibleH]);
+    const prev = treeScrollRef.current;
+    const margin = 2;
+    if (safeIdx < prev + margin) {
+      treeScrollRef.current = Math.max(0, safeIdx - margin);
+    } else if (safeIdx >= prev + treeVisibleH - margin) {
+      treeScrollRef.current = Math.min(maxScroll, safeIdx - treeVisibleH + margin + 1);
+    } else {
+      treeScrollRef.current = Math.min(prev, maxScroll);
+    }
+  }
+  const treeScroll = treeScrollRef.current;
 
   // Preview: when explorer is focused, show diff of hovered file
   const previewFile = useMemo(() => {
@@ -141,6 +151,20 @@ export function App({ data, rootDir }: AppProps) {
   }, [panel, safeIdx, flatTree, diffs]);
 
   const activeFile = previewFile ?? selectedFile;
+
+  // Reset ctxIdx + diff position when active file changes
+  const prevActiveFile = useRef(activeFile);
+  useEffect(() => {
+    if (activeFile !== prevActiveFile.current) {
+      prevActiveFile.current = activeFile;
+      setCtxIdx(0);
+      // Reset diff position only for preview (not explicit navigation which sets its own cursor)
+      if (previewFile && previewFile !== selectedFile) {
+        setDiffCursor(0);
+        setDiffScroll(0);
+      }
+    }
+  }, [activeFile, previewFile, selectedFile]);
 
   // Current diff + context
   const currentDiff = activeFile ? diffs.get(activeFile) ?? null : null;
@@ -186,7 +210,7 @@ export function App({ data, rootDir }: AppProps) {
   useNavigation(
     { panel, treeIdx: safeIdx, selectedFile, diffScroll, diffCursor: safeDiffCursor, ctxIdx, minCrit, collapsed, inputMode, searchQuery },
     { setPanel, setTreeIdx, setSelectedFile, setDiffScroll, setDiffCursor, setCtxIdx, setMinCrit, setLineFlag, setCollapsed, setInputMode, setSearchQuery, onExport: handleExport, onToggleDiffMode: handleToggleDiffMode, historyPush: history.push, historyGoBack: history.goBack, historyGoForward: history.goForward },
-    { flatTree, diffRows: activeDiffRows, diffs, ctx, bodyH },
+    { flatTree, diffRows: activeDiffRows, diffs, ctx, bodyH, lineReviews },
   );
 
   // Visible slices
@@ -268,6 +292,20 @@ export function App({ data, rootDir }: AppProps) {
                   );
                 }
 
+                if (row.type === 'hunkFooter') {
+                  const hc = critColor(row.methodCrit);
+                  const isCur = panel === 1 && rowIndex === safeDiffCursor;
+                  return (
+                    <Box key={`f${i}`}>
+                      <Text color={isCur ? C.accent : C.dim}>{isCur ? '\u25B6' : '\u2500'}</Text>
+                      <Text color={C.dim}>{'\u2500 '}</Text>
+                      <Text color={C.dim}>{row.method} </Text>
+                      <Text color={hc}>{row.methodCrit.toFixed(1)}</Text>
+                      <Text color={C.dim}> {'\u2500'.repeat(Math.max(0, diffW - row.method.length - 12))}</Text>
+                    </Box>
+                  );
+                }
+
                 const lineKey = row.reviewLine ? `${activeFile}:${row.reviewLine.n}` : '';
                 const review = lineReviews.get(lineKey);
                 const flag = review?.flag;
@@ -281,7 +319,7 @@ export function App({ data, rootDir }: AppProps) {
                   return (
                     <Box key={`d${i}`} flexDirection="column">
                       <Box>
-                        <DLine line={line} width={diffW - 6} minCrit={minCrit} showCrit={true} isCursor={isCur} flag={flag} />
+                        <DLine line={line} width={diffW - 6} minCrit={minCrit} isCursor={isCur} flag={flag} />
                         {isFlaggable ? (
                           <Text color={flag ? (FLAG_COLOR[flag] ?? C.dim) : C.dim}>
                             {flag ? ` ${FLAG_ICON[flag]}` : ' \u25CB'}
@@ -302,11 +340,11 @@ export function App({ data, rootDir }: AppProps) {
                   <Box key={`d${i}`} flexDirection="column">
                     <Box>
                       <Box width={halfDiff}>
-                        <DLine line={row.baseLine ?? null} width={halfDiff} minCrit={minCrit} showCrit={false} isCursor={false} />
+                        <DLine line={row.baseLine ?? null} width={halfDiff} minCrit={minCrit} isCursor={false} />
                       </Box>
                       <Text color={C.border}>{'\u2502'}</Text>
                       <Box width={halfDiff}>
-                        <DLine line={row.reviewLine ?? null} width={halfDiff - 4} minCrit={minCrit} showCrit={true} isCursor={isCur} flag={flag} />
+                        <DLine line={row.reviewLine ?? null} width={halfDiff - 4} minCrit={minCrit} isCursor={isCur} flag={flag} />
                       </Box>
                       {row.reviewLine && (row.reviewLine.t === 'add' || row.reviewLine.t === 'del') ? (
                         <Text color={flag ? (FLAG_COLOR[flag] ?? C.dim) : C.dim}>

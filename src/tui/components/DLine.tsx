@@ -1,18 +1,17 @@
 import React from 'react';
 import { Box, Text } from 'ink';
-import { C, critColor, critBar, FLAG_ICON, FLAG_COLOR } from '../colors.js';
+import { C, critBar } from '../colors.js';
 import type { TuiDiffLine } from '../types.js';
 
 interface DLineProps {
   line: TuiDiffLine | null;
   width: number;
   minCrit: number;
-  showCrit: boolean;
   isCursor?: boolean;
   flag?: string;
 }
 
-export function DLine({ line, width, minCrit, showCrit, isCursor, flag }: DLineProps) {
+export function DLine({ line, width, minCrit, isCursor, flag }: DLineProps) {
   if (!line) return <Text color={C.dim}>{' '.repeat(Math.max(0, width))}</Text>;
 
   const isAdd = line.t === 'add';
@@ -38,12 +37,9 @@ export function DLine({ line, width, minCrit, showCrit, isCursor, flag }: DLineP
   const cursorColor = isCursor ? C.accent : line.isSig ? C.accent : C.dim;
 
   const lineNum = String(line.n).padStart(3, ' ');
-  const maxCodeLen = Math.max(10, width - 13);
+  const maxCodeLen = Math.max(10, width - 8);
   const isTruncated = line.c.length > maxCodeLen;
   const code = isTruncated ? line.c.slice(0, maxCodeLen - 1) + '\u2026' : line.c;
-  const critStr = showCrit && isChanged && lineCrit >= minCrit && lineCrit > 0
-    ? ` ${lineCrit.toFixed(1)}`
-    : '';
 
   return (
     <Box>
@@ -57,7 +53,6 @@ export function DLine({ line, width, minCrit, showCrit, isCursor, flag }: DLineP
       ) : (
         <Text color={textColor} bold={line.isSig || (isChanged && lineCrit >= 7)}>{code}</Text>
       )}
-      {critStr && <Text color={critColor(lineCrit)} bold>{critStr}</Text>}
     </Box>
   );
 }

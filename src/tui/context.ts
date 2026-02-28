@@ -181,16 +181,23 @@ export function getLineContext(
   diffs: Map<string, TuiFileDiff>,
 ): ContextData | null {
   const outLinks = result.links.filter(l => l.fromFile === filePath);
+  if (outLinks.length === 0) return null;
+
+  // Build path → (fileId, diff) lookup once instead of O(n) scans per match
+  const pathToDiff = new Map<string, { fileId: string; diff: TuiFileDiff }>();
+  for (const [fileId, diff] of diffs) {
+    pathToDiff.set(diff.path, { fileId, diff });
+  }
 
   for (const link of outLinks) {
     for (const spec of link.specifiers ?? []) {
       if (!lineContent.includes(spec)) continue;
 
-      const targetDiff = [...diffs.values()].find(d => d.path === link.toFile);
-      const chunks: ChunkInfo[] = targetDiff
-        ? targetDiff.rows
+      const target = pathToDiff.get(link.toFile);
+      const chunks: ChunkInfo[] = target
+        ? target.diff.rows
             .filter(r => r.type === 'hunkHeader')
-            .map(r => ({ file: targetDiff.name, method: r.method, crit: r.methodCrit, label: r.label, fileId: [...diffs.entries()].find(([, v]) => v === targetDiff)?.[0] }))
+            .map(r => ({ file: target.diff.name, method: r.method, crit: r.methodCrit, label: r.label, fileId: target.fileId }))
         : [];
 
       const calledBy: UsedByEntry[] = result.links
