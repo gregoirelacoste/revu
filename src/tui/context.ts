@@ -1,9 +1,10 @@
 // ── Context builders: derive context panel data from selection ──
 
 import type { ScanResult } from '../core/engine.js';
-import type { TuiFileDiff, ContextData, ChunkInfo, ReviewStats } from './types.js';
+import type { TuiFileDiff, ContextData, ChunkInfo, ReviewStats, SideEffect } from './types.js';
 import type { LineReview } from './hooks/useReview.js';
 import { computeFileReviewStats } from './review-stats.js';
+import { allMethods, buildSigChangedMap } from '../core/analyzer/side-effects.js';
 
 function aggregateStats(
   files: Array<{ id: string }>, diffs: Map<string, TuiFileDiff>, lineReviews: Map<string, LineReview>,
@@ -39,12 +40,16 @@ export function getFileContext(
     ? `${chunks.length} hunk(s) \u00B7 ${stats.reviewed}/${stats.total} (${pct}%)`
     : `${chunks.length} hunk(s) \u00B7 ${diff.path}`;
 
+  // Side-effects: find sources of impact for this file
+  const sideEffects = findSideEffects(diff.path, result);
+
   return {
     name: diff.name,
     crit: diff.crit,
     summary,
     chunks,
     usedBy: diff.usedBy,
+    sideEffects: sideEffects.length > 0 ? sideEffects : undefined,
     reviewStats: stats,
   };
 }
@@ -133,4 +138,33 @@ export function getRepoContext(
     chunks: chunks.sort((a, b) => b.crit - a.crit),
     reviewStats: stats.total > 0 ? stats : undefined,
   };
+}
+
+// ── Side-effect source lookup ──
+
+function findSideEffects(filePath: string, result: ScanResult): SideEffect[] {
+  const file = result.repos.flatMap(r => r.files).find(f => f.path === filePath);
+  if (!file || !allMethods(file).some(m => m.impacted)) return [];
+
+  const sigMap = buildSigChangedMap(result.repos);
+
+  const effects: SideEffect[] = [];
+  for (const link of result.links) {
+    if (link.fromFile !== filePath) continue;
+    const changedNames = sigMap.get(link.toFile);
+    if (!changedNames) continue;
+
+    const isInject = link.type === 'inject';
+    const matchingSpecs = link.specifiers?.filter(s => changedNames.has(s)) ?? [];
+    if (isInject) {
+      for (const name of changedNames) {
+        effects.push({ sourceFile: link.toFile.split('/').pop() ?? link.toFile, method: name, via: 'inject' });
+      }
+    } else if (matchingSpecs.length > 0) {
+      for (const spec of matchingSpecs) {
+        effects.push({ sourceFile: link.toFile.split('/').pop() ?? link.toFile, method: spec, via: 'import' });
+      }
+    }
+  }
+  return effects;
 }

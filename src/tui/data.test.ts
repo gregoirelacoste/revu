@@ -58,6 +58,28 @@ describe('buildTree', () => {
     expect(tree[0].crit).toBe(0);
     expect(tree[0].children).toHaveLength(0);
   });
+
+  it('propagates sideEffect from impacted methods to file and folder', () => {
+    const result = mockScanResult({
+      repos: [mockRepoEntry({
+        files: [
+          mockFileEntry({
+            id: 'f1', dir: 'src', name: 'case.controller', ext: '.ts',
+            methods: [mockMethodData({ name: 'create', impacted: true })],
+          }),
+          mockFileEntry({
+            id: 'f2', dir: 'src', name: 'auth.service', ext: '.ts',
+            methods: [mockMethodData({ name: 'validate', impacted: undefined })],
+          }),
+        ],
+      })],
+    });
+    const tree = buildTree(result);
+    const folder = tree[0].children![0];
+    expect(folder.sideEffect).toBe(true);
+    expect(folder.children![0].sideEffect).toBe(true);  // f1 impacted
+    expect(folder.children![1].sideEffect).toBe(false);  // f2 not impacted
+  });
 });
 
 // ── flattenTree ──

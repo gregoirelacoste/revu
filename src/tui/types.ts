@@ -60,6 +60,14 @@ export interface UsedByEntry {
   what: string;
 }
 
+// ── Side-effects ──
+
+export interface SideEffect {
+  sourceFile: string;
+  method: string;
+  via: string;
+}
+
 // ── Context panel ──
 
 export interface ChunkInfo {
@@ -76,5 +84,6 @@ export interface ContextData {
   summary: string;
   chunks: ChunkInfo[];
   usedBy?: UsedByEntry[];
+  sideEffects?: SideEffect[];
   reviewStats?: ReviewStats;
 }

@@ -10,6 +10,7 @@ import { detectLinks } from './analyzer/link-detector.js';
 import { computeFileCriticality, computeMethodCriticality } from './scoring/criticality.js';
 import { loadConfig } from './scoring/config.js';
 import { buildMethodData, buildConstantData } from './analyzer/diff-extractor.js';
+import { detectSideEffects } from './analyzer/side-effects.js';
 import type {
   ParsedFile, FileDiff, MethodData,
   DetectedLink, RepoInfo, RevuConfig, ScoringConfig,
@@ -72,6 +73,11 @@ export async function scan(rootDir: string, baseBranch = 'develop'): Promise<Sca
 
   // Enrich files with real dependency counts, then recompute criticality
   enrichWithDependencies(repoEntries, links, config.scoring);
+
+  // Mark methods impacted by signature changes in their dependencies
+  if (config.rules.sideEffectDetection) {
+    detectSideEffects(repoEntries, links);
+  }
 
   return { repos: repoEntries, links, allFiles: allParsedFiles, config };
 }

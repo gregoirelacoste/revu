@@ -96,6 +96,27 @@ export function ContextPanel({ ctx, ctxIdx, isActive, width, minCrit }: ContextP
           ))}
         </Box>
       )}
+
+      {/* Side-effects */}
+      {ctx.sideEffects && ctx.sideEffects.length > 0 && (
+        <Box flexDirection="column" marginTop={1}>
+          <Text color={C.dim}>{'\u2500'.repeat(Math.max(0, width - 4))}</Text>
+          <Text color={C.orange} bold>{' \u26A1 SIDE-EFFECTS'}</Text>
+          {ctx.sideEffects.map((se, i) => (
+            <Box key={i} flexDirection="column">
+              <Box>
+                <Text> </Text>
+                <Text color={C.orange}>
+                  {se.sourceFile.length > width - 5
+                    ? se.sourceFile.slice(0, width - 6) + '\u2026'
+                    : se.sourceFile}
+                </Text>
+              </Box>
+              <Text color={C.dim}>   {se.method} ({se.via})</Text>
+            </Box>
+          ))}
+        </Box>
+      )}
     </Box>
   );
 }

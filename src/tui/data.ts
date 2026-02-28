@@ -2,6 +2,7 @@
 
 import type { ScanResult, FileEntry, RepoEntry } from '../core/engine.js';
 import type { MethodData } from '../core/types.js';
+import { allMethods } from '../core/analyzer/side-effects.js';
 import type {
   TreeItem, FlatItem, TuiFileDiff, DiffRow,
   TuiDiffLine, UsedByEntry,
@@ -34,6 +35,7 @@ function repoToTree(repo: RepoEntry): TreeItem {
       type: f.type,
       crit: f.crit,
       id: f.id,
+      sideEffect: allMethods(f).some(m => m.impacted),
     }));
 
     if (dir === '') {
@@ -44,6 +46,7 @@ function repoToTree(repo: RepoEntry): TreeItem {
         name: dir,
         type: 'folder',
         crit: Math.round(dirCrit * 10) / 10,
+        sideEffect: fileItems.some(fi => fi.sideEffect),
         children: fileItems,
       });
     }

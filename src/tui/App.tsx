@@ -10,6 +10,7 @@ import { DLine } from './components/DLine.js';
 import { ContextPanel } from './components/ContextPanel.js';
 import { StatusBar } from './components/StatusBar.js';
 import { buildTree, flattenTree, buildFileDiffs } from './data.js';
+import { allMethods } from '../core/analyzer/side-effects.js';
 import { getFileContext, getFolderContext, getRepoContext } from './context.js';
 import { computeFileReviewStats, computeGlobalReviewStats } from './review-stats.js';
 import type { ScanResult } from '../core/engine.js';
@@ -104,6 +105,17 @@ export function App({ data, rootDir }: AppProps) {
     () => computeGlobalReviewStats(diffs, lineReviews),
     [diffs, lineReviews],
   );
+
+  // Count files with side-effects (at least one impacted method)
+  const sideEffectCount = useMemo(() => {
+    let count = 0;
+    for (const repo of data.repos) {
+      for (const file of repo.files) {
+        if (allMethods(file).some(m => m.impacted)) count++;
+      }
+    }
+    return count;
+  }, [data]);
 
   const ctx = useMemo((): ContextData | null => {
     const item = flatTree[safeIdx];
@@ -230,7 +242,7 @@ export function App({ data, rootDir }: AppProps) {
       </Box>
 
       {/* Status bar */}
-      <StatusBar repoCount={data.repos.length} stats={globalStats} width={size.w} />
+      <StatusBar repoCount={data.repos.length} stats={globalStats} sideEffects={sideEffectCount} width={size.w} />
     </Box>
   );
 }
