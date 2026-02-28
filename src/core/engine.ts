@@ -9,7 +9,7 @@ import { parseTypeScript } from './analyzer/ast-parser.js';
 import { detectLinks } from './analyzer/link-detector.js';
 import { computeFileCriticality, computeMethodCriticality } from './scoring/criticality.js';
 import { loadConfig } from './scoring/config.js';
-import { buildMethodData, buildConstantData } from './analyzer/diff-extractor.js';
+import { buildMethodData, buildConstantData, buildUncoveredDiff } from './analyzer/diff-extractor.js';
 import { detectSideEffects } from './analyzer/side-effects.js';
 import type {
   ParsedFile, FileDiff, MethodData,
@@ -156,6 +156,10 @@ async function buildFileEntry(
 
   const methods = buildMethodData(pf, diff, oldAst, fileCrit, scoring);
   const constants = buildConstantData(pf, diff, oldAst, fileCrit);
+
+  // Capture changes outside method/constant ranges (imports, decorators, etc.)
+  const uncovered = buildUncoveredDiff(pf, diff, fileCrit);
+  if (uncovered) constants.push(uncovered);
 
   return {
     id: `f-${repo.name}-${pf.path.replace(/\//g, '-').replace(/\./g, '_')}`,

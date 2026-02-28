@@ -95,6 +95,47 @@ function isFormattingOnly(diff: Array<{ t: DiffLineType; c: string }>): boolean 
   return sortedAdds.every((a, i) => a === sortedDels[i]);
 }
 
+// ── Uncovered diff: captures changes outside method/constant ranges (e.g. imports) ──
+
+export function buildUncoveredDiff(
+  pf: ParsedFile, diff: FileDiff, fileCrit: number,
+): MethodData | null {
+  const coveredRanges: [number, number][] = [];
+  for (const m of pf.methods) coveredRanges.push([m.startLine, m.endLine]);
+  for (const c of pf.constants) coveredRanges.push([c.startLine, c.endLine]);
+
+  const isCovered = (line: number): boolean =>
+    coveredRanges.some(([s, e]) => line >= s && line <= e);
+
+  const uncovered: Array<{ t: DiffLineType; c: string }> = [];
+  for (const hunk of diff.hunks) {
+    let newLine = hunk.newStart;
+    for (const line of hunk.lines) {
+      if (line.type === 'del') {
+        if (!isCovered(newLine)) uncovered.push({ t: 'd', c: line.content });
+        continue;
+      }
+      if (!isCovered(newLine)) {
+        if (line.type === 'add') uncovered.push({ t: 'a', c: line.content });
+        else if (line.type === 'context') uncovered.push({ t: 'c', c: line.content });
+      }
+      newLine++;
+    }
+  }
+
+  if (uncovered.length === 0 || isFormattingOnly(uncovered)) return null;
+
+  return {
+    name: '(imports)',
+    status: 'mod' as MethodStatus,
+    crit: Math.round(fileCrit * 0.3 * 10) / 10,
+    usages: 0,
+    tested: false,
+    sigChanged: false,
+    diff: uncovered,
+  };
+}
+
 // ── Diff line extraction ──
 
 function extractDeletedBlockDiff(
