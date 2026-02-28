@@ -1,6 +1,6 @@
 import React from 'react';
 import { Box, Text } from 'ink';
-import { C, critColor, critBg, FLAG_ICON, FLAG_COLOR } from '../colors.js';
+import { C, critColor, critBar, FLAG_ICON, FLAG_COLOR } from '../colors.js';
 import type { TuiDiffLine } from '../types.js';
 
 interface DLineProps {
@@ -20,8 +20,8 @@ export function DLine({ line, width, minCrit, showCrit, isCursor, flag }: DLineP
   const lineCrit = line.crit ?? 0;
   const isChanged = isAdd || isDel;
 
-  // Progressive contrast
-  const bgColor = isChanged && lineCrit > 0 ? critBg(lineCrit, isAdd ? 'add' : 'del') : undefined;
+  // Crit bar
+  const bar = isChanged && lineCrit > 0 ? critBar(lineCrit) : { char: ' ', color: C.dim };
 
   const prefix = isAdd ? '+' : isDel ? '-' : ' ';
   const prefixColor = isAdd ? C.green : isDel ? C.red : C.dim;
@@ -38,7 +38,7 @@ export function DLine({ line, width, minCrit, showCrit, isCursor, flag }: DLineP
   const cursorColor = isCursor ? C.accent : line.isSig ? C.accent : C.dim;
 
   const lineNum = String(line.n).padStart(3, ' ');
-  const maxCodeLen = Math.max(10, width - 12);
+  const maxCodeLen = Math.max(10, width - 13);
   const isTruncated = line.c.length > maxCodeLen;
   const code = isTruncated ? line.c.slice(0, maxCodeLen - 1) + '\u2026' : line.c;
   const critStr = showCrit && isChanged && lineCrit >= minCrit && lineCrit > 0
@@ -47,16 +47,15 @@ export function DLine({ line, width, minCrit, showCrit, isCursor, flag }: DLineP
 
   return (
     <Box>
+      <Text color={bar.color}>{bar.char}</Text>
       <Text color={cursorColor} bold={isCursor || line.isSig}>{cursorChar}</Text>
       <Text color={C.dim}>{lineNum} </Text>
       <Text color={prefixColor} bold>{prefix}</Text>
       <Text> </Text>
       {line.hiRanges && line.hiRanges.length > 0 ? (
-        <Text backgroundColor={bgColor}>
-          {renderHighlighted(line.c, line.hiRanges, textColor, isAdd ? C.green : C.red, width - 13)}
-        </Text>
+        renderHighlighted(line.c, line.hiRanges, textColor, isAdd ? C.green : C.red, maxCodeLen)
       ) : (
-        <Text color={textColor} bold={line.isSig || (isChanged && lineCrit >= 7)} backgroundColor={bgColor}>{code}</Text>
+        <Text color={textColor} bold={line.isSig || (isChanged && lineCrit >= 7)}>{code}</Text>
       )}
       {critStr && <Text color={critColor(lineCrit)} bold>{critStr}</Text>}
     </Box>

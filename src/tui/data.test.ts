@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { buildTree, flattenTree, buildFileDiffs } from './data.js';
+import { buildTree, flattenTree, buildFileDiffs, buildUnifiedRows } from './data.js';
 import {
-  mockScanResult, mockRepoEntry, mockFileEntry, mockMethodData,
+  mockScanResult, mockRepoEntry, mockFileEntry, mockMethodData, mockDiffRow,
 } from '../__tests__/fixtures.js';
+import type { DiffRow } from './types.js';
 
 // ── buildTree ──
 
@@ -186,5 +187,91 @@ describe('buildFileDiffs', () => {
     const fileDiff = diffs.get('f1')!;
     const headers = fileDiff.rows.filter(r => r.type === 'hunkHeader');
     expect(headers).toHaveLength(2);
+  });
+});
+
+// ── buildUnifiedRows ──
+
+describe('buildUnifiedRows', () => {
+  it('preserves hunkHeaders', () => {
+    const rows: DiffRow[] = [
+      { type: 'hunkHeader', method: 'fn', methodCrit: 5, label: 'Modified' },
+      mockDiffRow({ baseLine: { n: 1, c: 'old', t: 'del' }, reviewLine: { n: 1, c: 'new', t: 'add' } }),
+    ];
+    const unified = buildUnifiedRows(rows);
+    expect(unified[0].type).toBe('hunkHeader');
+    expect(unified[0].method).toBe('fn');
+  });
+
+  it('emits context lines once without duplication', () => {
+    const rows: DiffRow[] = [
+      { type: 'hunkHeader', method: 'fn', methodCrit: 5, label: 'Mod' },
+      {
+        type: 'diffRow', method: 'fn', methodCrit: 5, label: 'Mod',
+        baseLine: { n: 1, c: '  const x = 1;', t: 'ctx' },
+        reviewLine: { n: 1, c: '  const x = 1;', t: 'ctx' },
+      },
+    ];
+    const unified = buildUnifiedRows(rows);
+    const diffLines = unified.filter(r => r.type === 'diffRow');
+    expect(diffLines).toHaveLength(1);
+    expect(diffLines[0].reviewLine?.t).toBe('ctx');
+    expect(diffLines[0].baseLine).toBeNull();
+  });
+
+  it('orders del before add within a hunk', () => {
+    const rows: DiffRow[] = [
+      { type: 'hunkHeader', method: 'fn', methodCrit: 5, label: 'Mod' },
+      mockDiffRow({
+        baseLine: { n: 1, c: 'old line', t: 'del', crit: 4 },
+        reviewLine: { n: 1, c: 'new line', t: 'add', crit: 3 },
+      }),
+      mockDiffRow({
+        baseLine: { n: 2, c: 'old line 2', t: 'del', crit: 4 },
+        reviewLine: { n: 2, c: 'new line 2', t: 'add', crit: 3 },
+      }),
+    ];
+    const unified = buildUnifiedRows(rows);
+    const diffLines = unified.filter(r => r.type === 'diffRow');
+    // Should be: del, del, add, add
+    expect(diffLines).toHaveLength(4);
+    expect(diffLines[0].baseLine?.t).toBe('del');
+    expect(diffLines[1].baseLine?.t).toBe('del');
+    expect(diffLines[2].reviewLine?.t).toBe('add');
+    expect(diffLines[3].reviewLine?.t).toBe('add');
+  });
+
+  it('preserves hiRanges on lines', () => {
+    const rows: DiffRow[] = [
+      { type: 'hunkHeader', method: 'fn', methodCrit: 5, label: 'Mod' },
+      mockDiffRow({
+        baseLine: null,
+        reviewLine: { n: 1, c: 'new code', t: 'add', crit: 3, hiRanges: [[0, 3]] },
+      }),
+    ];
+    const unified = buildUnifiedRows(rows);
+    const addRow = unified.find(r => r.reviewLine?.t === 'add');
+    expect(addRow?.reviewLine?.hiRanges).toEqual([[0, 3]]);
+  });
+
+  it('handles deleted method (baseLine only rows)', () => {
+    const rows: DiffRow[] = [
+      { type: 'hunkHeader', method: 'removed', methodCrit: 6, label: 'Deleted' },
+      {
+        type: 'diffRow', method: 'removed', methodCrit: 6, label: 'Deleted',
+        baseLine: { n: 1, c: 'line 1', t: 'del', crit: 6 },
+        reviewLine: null,
+      },
+      {
+        type: 'diffRow', method: 'removed', methodCrit: 6, label: 'Deleted',
+        baseLine: { n: 2, c: 'line 2', t: 'del', crit: 6 },
+        reviewLine: null,
+      },
+    ];
+    const unified = buildUnifiedRows(rows);
+    const diffLines = unified.filter(r => r.type === 'diffRow');
+    expect(diffLines).toHaveLength(2);
+    expect(diffLines.every(r => r.baseLine?.t === 'del')).toBe(true);
+    expect(diffLines.every(r => r.reviewLine === null)).toBe(true);
   });
 });

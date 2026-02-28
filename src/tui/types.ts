@@ -25,6 +25,10 @@ export interface FlatItem {
   isFolder: boolean;
 }
 
+// ── Diff mode ──
+
+export type DiffMode = 'unified' | 'side-by-side';
+
 // ── Diff panel ──
 
 export interface DiffRow {
@@ -58,6 +62,7 @@ export interface UsedByEntry {
   file: string;
   method: string;
   what: string;
+  fileId?: string;
 }
 
 // ── Side-effects ──
@@ -66,6 +71,15 @@ export interface SideEffect {
   sourceFile: string;
   method: string;
   via: string;
+}
+
+// ── Import entry ──
+
+export interface ImportEntry {
+  name: string;
+  sourceFile: string;
+  type: 'import' | 'inject';
+  fileId?: string;
 }
 
 // ── Context panel ──
@@ -83,6 +97,7 @@ export interface ContextData {
   crit: number;
   summary: string;
   chunks: ChunkInfo[];
+  imports?: ImportEntry[];
   usedBy?: UsedByEntry[];
   sideEffects?: SideEffect[];
   reviewStats?: ReviewStats;

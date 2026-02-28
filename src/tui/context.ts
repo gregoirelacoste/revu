@@ -1,7 +1,7 @@
 // ── Context builders: derive context panel data from selection ──
 
 import type { ScanResult } from '../core/engine.js';
-import type { TuiFileDiff, ContextData, ChunkInfo, ReviewStats, SideEffect } from './types.js';
+import type { TuiFileDiff, ContextData, ChunkInfo, ReviewStats, SideEffect, UsedByEntry, ImportEntry } from './types.js';
 import type { LineReview } from './hooks/useReview.js';
 import { computeFileReviewStats } from './review-stats.js';
 import { allMethods, buildSigChangedMap } from '../core/analyzer/side-effects.js';
@@ -40,6 +40,26 @@ export function getFileContext(
     ? `${chunks.length} hunk(s) \u00B7 ${stats.reviewed}/${stats.total} (${pct}%)`
     : `${chunks.length} hunk(s) \u00B7 ${diff.path}`;
 
+  // Outgoing imports/injections
+  const outLinks = result.links.filter(l => l.fromFile === diff.path);
+  const imports: ImportEntry[] = [];
+  const seenImport = new Set<string>();
+  for (const link of outLinks) {
+    const targetName = link.toFile.split('/').pop() ?? link.toFile;
+    const targetFileId = findFileIdByPath(link.toFile, result);
+    for (const spec of link.specifiers ?? [link.label]) {
+      const key = `${spec}:${targetName}`;
+      if (seenImport.has(key)) continue;
+      seenImport.add(key);
+      imports.push({
+        name: spec,
+        sourceFile: targetName,
+        type: link.type === 'inject' ? 'inject' : 'import',
+        fileId: targetFileId,
+      });
+    }
+  }
+
   // Side-effects: find sources of impact for this file
   const sideEffects = findSideEffects(diff.path, result);
 
@@ -48,6 +68,7 @@ export function getFileContext(
     crit: diff.crit,
     summary,
     chunks,
+    imports: imports.length > 0 ? imports : undefined,
     usedBy: diff.usedBy,
     sideEffects: sideEffects.length > 0 ? sideEffects : undefined,
     reviewStats: stats,
@@ -138,6 +159,59 @@ export function getRepoContext(
     chunks: chunks.sort((a, b) => b.crit - a.crit),
     reviewStats: stats.total > 0 ? stats : undefined,
   };
+}
+
+// ── Helper: resolve file path → fileId ──
+
+function findFileIdByPath(path: string, result: ScanResult): string | undefined {
+  for (const repo of result.repos) {
+    for (const file of repo.files) {
+      if (file.path === path) return file.id;
+    }
+  }
+  return undefined;
+}
+
+// ── Line-level context (Mode 4) ──
+
+export function getLineContext(
+  filePath: string,
+  lineContent: string,
+  result: ScanResult,
+  diffs: Map<string, TuiFileDiff>,
+): ContextData | null {
+  const outLinks = result.links.filter(l => l.fromFile === filePath);
+
+  for (const link of outLinks) {
+    for (const spec of link.specifiers ?? []) {
+      if (!lineContent.includes(spec)) continue;
+
+      const targetDiff = [...diffs.values()].find(d => d.path === link.toFile);
+      const chunks: ChunkInfo[] = targetDiff
+        ? targetDiff.rows
+            .filter(r => r.type === 'hunkHeader')
+            .map(r => ({ file: targetDiff.name, method: r.method, crit: r.methodCrit, label: r.label, fileId: [...diffs.entries()].find(([, v]) => v === targetDiff)?.[0] }))
+        : [];
+
+      const calledBy: UsedByEntry[] = result.links
+        .filter(l => l.toFile === link.toFile && l.fromFile !== filePath)
+        .map(l => ({
+          file: l.fromFile.split('/').pop() ?? l.fromFile,
+          method: l.methodName ?? l.label,
+          what: `${l.type}: ${l.label}`,
+        }));
+
+      const targetName = link.toFile.split('/').pop() ?? link.toFile;
+      return {
+        name: spec,
+        crit: link.riskCrit,
+        summary: `from ${targetName}`,
+        chunks,
+        usedBy: calledBy.length > 0 ? calledBy : undefined,
+      };
+    }
+  }
+  return null;
 }
 
 // ── Side-effect source lookup ──

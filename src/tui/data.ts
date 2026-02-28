@@ -191,9 +191,63 @@ function methodLabel(m: MethodData): string {
   return 'Modified';
 }
 
+// ── Unified diff: reorder paired DiffRows into unified format ──
+
+export function buildUnifiedRows(rows: DiffRow[]): DiffRow[] {
+  const out: DiffRow[] = [];
+  let pending: { dels: DiffRow[]; adds: DiffRow[] } = { dels: [], adds: [] };
+
+  const flush = () => {
+    out.push(...pending.dels, ...pending.adds);
+    pending = { dels: [], adds: [] };
+  };
+
+  for (const row of rows) {
+    if (row.type === 'hunkHeader') {
+      flush();
+      out.push(row);
+      continue;
+    }
+
+    const base = row.baseLine;
+    const review = row.reviewLine;
+
+    // Context line (both sides present, both ctx)
+    if (base && review && base.t === 'ctx' && review.t === 'ctx') {
+      flush();
+      out.push({ ...row, baseLine: null, reviewLine: review });
+      continue;
+    }
+
+    // Del-only or del side of a paired row
+    if (base && base.t === 'del') {
+      pending.dels.push({
+        type: 'diffRow', method: row.method, methodCrit: row.methodCrit, label: row.label,
+        baseLine: base, reviewLine: null,
+      });
+    }
+
+    // Add-only or add side of a paired row
+    if (review && review.t === 'add') {
+      pending.adds.push({
+        type: 'diffRow', method: row.method, methodCrit: row.methodCrit, label: row.label,
+        baseLine: null, reviewLine: review,
+      });
+    }
+  }
+
+  flush();
+  return out;
+}
+
 // ── UsedBy map: file path → who uses it ──
 
 function buildUsedByMap(result: ScanResult): Map<string, UsedByEntry[]> {
+  const pathToId = new Map<string, string>();
+  for (const repo of result.repos) {
+    for (const file of repo.files) pathToId.set(file.path, file.id);
+  }
+
   const map = new Map<string, UsedByEntry[]>();
   for (const link of result.links) {
     const entries = map.get(link.toFile) ?? [];
@@ -201,6 +255,7 @@ function buildUsedByMap(result: ScanResult): Map<string, UsedByEntry[]> {
       file: link.fromFile.split('/').pop() ?? link.fromFile,
       method: link.methodName ?? link.label,
       what: `${link.type}: ${link.label}`,
+      fileId: pathToId.get(link.fromFile),
     });
     map.set(link.toFile, entries);
   }

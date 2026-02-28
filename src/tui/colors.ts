@@ -19,14 +19,12 @@ export const C = {
 export const critColor = (v: number): string =>
   v >= 7 ? C.red : v >= 4.5 ? C.orange : v >= 2.5 ? C.blue : C.green;
 
-export const critBg = (v: number, t: 'add' | 'del'): string => {
-  const intensity = Math.min(1, v / 10);
-  if (t === 'add') {
-    const g = Math.round(30 + intensity * 25);
-    return `#0a${g.toString(16).padStart(2, '0')}0a`;
-  }
-  const r = Math.round(30 + intensity * 25);
-  return `#${r.toString(16).padStart(2, '0')}0a0a`;
+export const critBar = (v: number): { char: string; color: string } => {
+  if (v >= 7) return { char: '\u2588', color: C.red };
+  if (v >= 4.5) return { char: '\u2593', color: C.orange };
+  if (v >= 2.5) return { char: '\u2592', color: C.blue };
+  if (v >= 0.5) return { char: '\u2591', color: C.green };
+  return { char: ' ', color: C.dim };
 };
 
 export const FLAG_ICON: Record<string, string> = {
