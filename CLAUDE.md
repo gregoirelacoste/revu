@@ -55,10 +55,17 @@ Method criticality factors in: file score (40%), usage count (30%), signature ch
 
 Line-level multipliers (`config.scoring.lineCriticality`) will modulate per-line intensity in the TUI.
 
-### TUI (src/tui/) — In Progress
+### TUI (src/tui/)
 
-Will use Ink ^5.1.0 for terminal rendering. Target: 3-panel layout (Explorer / Diff / Context).
-Reference POC: `v2/POC/revu-tui/`
+Ink ^5.1.0 (React for terminals). 3-panel layout: Explorer / Diff / Context.
+
+- **App.tsx** — root component, wires state + 3 panels + status bar
+- **data.ts** — transforms `ScanResult` → TUI tree (TreeItem/FlatItem) + diff rows
+- **context.ts** — derives context panel data from current selection (file/folder/repo)
+- **colors.ts** — palette + `critColor()` + `TYPE_ICON` map
+- **types.ts** — TUI-specific types (TreeItem, FlatItem, DiffRow, TuiDiffLine, ContextData)
+- **components/** — Border, TreeRow, DLine (side-by-side diff line), ContextPanel
+- **hooks/** — useTermSize (responsive resize), useNavigation (keyboard input)
 
 ### Shared Types
 
