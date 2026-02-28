@@ -1,82 +1,90 @@
-import { Router } from 'express';
+// ── Core scan engine — pure orchestration, no HTTP ──
+
 import { readFile } from 'node:fs/promises';
 import { join, dirname, extname, basename } from 'node:path';
-import { scanRepos } from '../scanner/repo-scanner.js';
-import { computeDiff, getFileAtBranch } from '../scanner/diff-parser.js';
-import { classifyFile, isDisplayableFile, isTypeScriptFile } from '../analyzer/file-classifier.js';
-import { parseTypeScript } from '../analyzer/ast-parser.js';
-import { detectLinks } from '../analyzer/link-detector.js';
-import { computeFileCriticality, computeMethodCriticality } from '../scoring/criticality.js';
-import { computeLayout } from '../layout/spatial-layout.js';
+import { scanRepos } from './scanner/repo-scanner.js';
+import { computeDiff, getFileAtBranch } from './scanner/diff-parser.js';
+import { classifyFile, isDisplayableFile, isTypeScriptFile } from './analyzer/file-classifier.js';
+import { parseTypeScript } from './analyzer/ast-parser.js';
+import { detectLinks } from './analyzer/link-detector.js';
+import { computeFileCriticality, computeMethodCriticality } from './scoring/criticality.js';
 import type {
-  ScanResponse, ParsedFile, FileDiff, MethodData, DiffLineType,
-  DetectedLink, EdgeData, PlanetData, RepoInfo, MethodStatus,
-} from '../types.js';
+  ParsedFile, FileDiff, MethodData, DiffLineType,
+  DetectedLink, RepoInfo, MethodStatus,
+} from './types.js';
 
-export function createScanRouter(rootDir: string): Router {
-  const router = Router();
+// ── Result types ──
 
-  router.get('/scan', async (req, res) => {
-    try {
-      const baseBranch = typeof req.query.base === 'string' ? req.query.base : 'develop';
-      const result = await scanUniverse(rootDir, baseBranch);
-      res.json(result);
-    } catch (err) {
-      console.error('Scan error:', err);
-      res.status(500).json({ error: 'Scan failed' });
-    }
-  });
+export interface FileEntry {
+  id: string;
+  name: string;
+  ext: string;
+  dir: string;
+  type: string;
+  crit: number;
+  add: number;
+  del: number;
+  tested: boolean;
+  methods: MethodData[];
+  constants: MethodData[];
+}
 
-  return router;
+export interface RepoEntry {
+  name: string;
+  branch: string;
+  files: FileEntry[];
+}
+
+export interface ScanResult {
+  repos: RepoEntry[];
+  links: DetectedLink[];
+  allFiles: ParsedFile[];
 }
 
 // ── Main orchestrator ──
 
-async function scanUniverse(rootDir: string, baseBranch = 'develop'): Promise<ScanResponse> {
+export async function scan(rootDir: string, baseBranch = 'develop'): Promise<ScanResult> {
   const repos = await scanRepos(rootDir, baseBranch);
-  if (repos.length === 0) return { galaxies: [], edges: [] };
+  if (repos.length === 0) return { repos: [], links: [], allFiles: [] };
 
   const allParsedFiles: ParsedFile[] = [];
-  const layoutInputs = [];
+  const repoEntries: RepoEntry[] = [];
 
   for (const repo of repos) {
     try {
       const result = await processRepo(repo);
       if (!result) continue;
       allParsedFiles.push(...result.parsedFiles);
-      layoutInputs.push(result.layoutInput);
+      repoEntries.push(result.entry);
     } catch (err) {
       console.error(`Skipping repo ${repo.name}:`, (err as Error).message);
     }
   }
 
-  const { galaxies } = computeLayout(layoutInputs);
-  const fileCritMap = buildFileCritMap(galaxies);
+  const fileCritMap = buildFileCritMap(repoEntries);
   const links = detectLinks(allParsedFiles, fileCritMap);
-  const edges = linksToEdges(links, allParsedFiles, galaxies);
 
-  return { galaxies, edges };
+  return { repos: repoEntries, links, allFiles: allParsedFiles };
 }
 
 // ── Per-repo processing ──
 
-async function processRepo(repo: RepoInfo) {
+async function processRepo(repo: RepoInfo): Promise<{ parsedFiles: ParsedFile[]; entry: RepoEntry } | null> {
   const diffs = await computeDiff(repo.path, repo.baseBranch);
   const parsedFiles = await parseRepoFiles(repo, diffs);
 
-  const dirMap = new Map<string, PlanetData[]>();
+  const files: FileEntry[] = [];
   for (const pf of parsedFiles) {
     const diff = diffs.find(d => d.path === pf.path)!;
-    await buildPlanetEntry(pf, diff, diffs, repo, dirMap);
+    const entry = await buildFileEntry(pf, diff, diffs, repo);
+    if (entry) files.push(entry);
   }
 
-  if (dirMap.size === 0) return null;
-
-  const dirAffinity = computeDirAffinity(parsedFiles);
+  if (files.length === 0) return null;
 
   return {
     parsedFiles,
-    layoutInput: { repoName: repo.name, branch: repo.currentBranch, directories: dirMap, dirAffinity },
+    entry: { name: repo.name, branch: repo.currentBranch, files },
   };
 }
 
@@ -98,7 +106,6 @@ async function parseRepoFiles(repo: RepoInfo, diffs: FileDiff[]): Promise<Parsed
         imports: ast.imports, injections: ast.injections,
       });
     } else {
-      // HTML/CSS/SCSS — single constant spanning the whole file for diff display
       const lineCount = code.split('\n').length;
       parsedFiles.push({
         path: diff.path, repoName: repo.name, fileType,
@@ -110,13 +117,11 @@ async function parseRepoFiles(repo: RepoInfo, diffs: FileDiff[]): Promise<Parsed
   return parsedFiles;
 }
 
-async function buildPlanetEntry(
-  pf: ParsedFile, diff: FileDiff, diffs: FileDiff[],
-  repo: RepoInfo, dirMap: Map<string, PlanetData[]>,
-) {
-  const dir = dirname(pf.path);
-  if (!dirMap.has(dir)) dirMap.set(dir, []);
+// ── File entry builder ──
 
+async function buildFileEntry(
+  pf: ParsedFile, diff: FileDiff, diffs: FileDiff[], repo: RepoInfo,
+): Promise<FileEntry> {
   const hasSpec = diffs.some(d => d.path === pf.path.replace('.ts', '.spec.ts'));
   const fileCrit = computeFileCriticality(pf.fileType, diff.additions, diff.deletions, 0, pf.path);
 
@@ -126,61 +131,28 @@ async function buildPlanetEntry(
   const methods = buildMethodData(pf, diff, oldAst, fileCrit);
   const constants = buildConstantData(pf, diff, oldAst, fileCrit);
 
-  dirMap.get(dir)!.push({
-    id: `p-${repo.name}-${pf.path.replace(/\//g, '-').replace(/\./g, '_')}`,
+  return {
+    id: `f-${repo.name}-${pf.path.replace(/\//g, '-').replace(/\./g, '_')}`,
     name: basename(pf.path, extname(pf.path)),
     ext: extname(pf.path),
+    dir: dirname(pf.path),
     type: pf.fileType,
     crit: fileCrit,
     add: diff.additions,
     del: diff.deletions,
     tested: hasSpec,
-    ox: 0, oy: 0,
     methods,
     constants,
-  });
-}
-
-// ── Dir affinity (inter-directory links) ──
-
-function computeDirAffinity(parsedFiles: ParsedFile[]): Map<string, Map<string, number>> {
-  const affinity = new Map<string, Map<string, number>>();
-
-  for (const pf of parsedFiles) {
-    const fromDir = dirname(pf.path);
-    // Collect target strings from imports (.source) and injections (.typeName)
-    const targets: string[] = [
-      ...(pf.imports ?? []).map(i => i.source),
-      ...(pf.injections ?? []).map(i => i.typeName),
-    ];
-    for (const target of targets) {
-      const targetFile = parsedFiles.find(f => f.path.includes(target) || f.path.endsWith(`${target}.ts`));
-      if (!targetFile) continue;
-      const toDir = dirname(targetFile.path);
-      if (fromDir === toDir) continue;
-
-      if (!affinity.has(fromDir)) affinity.set(fromDir, new Map());
-      const inner = affinity.get(fromDir)!;
-      inner.set(toDir, (inner.get(toDir) ?? 0) + 1);
-
-      if (!affinity.has(toDir)) affinity.set(toDir, new Map());
-      const innerRev = affinity.get(toDir)!;
-      innerRev.set(fromDir, (innerRev.get(fromDir) ?? 0) + 1);
-    }
-  }
-
-  return affinity;
+  };
 }
 
 // ── Crit map builder ──
 
-function buildFileCritMap(galaxies: { systems: { planets: { id: string; crit: number }[] }[] }[]): Map<string, number> {
+function buildFileCritMap(repos: RepoEntry[]): Map<string, number> {
   const map = new Map<string, number>();
-  for (const g of galaxies) {
-    for (const s of g.systems) {
-      for (const p of s.planets) {
-        map.set(p.id, p.crit);
-      }
+  for (const r of repos) {
+    for (const f of r.files) {
+      map.set(f.id, f.crit);
     }
   }
   return map;
@@ -264,12 +236,10 @@ function buildConstantData(
 
 // ── Formatting filter ──
 
-/** Normalize a line for comparison: collapse whitespace, remove trailing commas/semicolons, normalize quotes */
 function normalizeLine(s: string): string {
   return s.trim().replace(/\s+/g, ' ').replace(/[;,]$/g, '').replace(/'/g, '"');
 }
 
-/** True if the diff only contains whitespace / formatting changes (no semantic change) */
 function isFormattingOnly(diff: Array<{ t: DiffLineType; c: string }>): boolean {
   if (diff.length === 0) return true;
   const adds = diff.filter(d => d.t === 'a').map(d => normalizeLine(d.c));
@@ -283,7 +253,6 @@ function isFormattingOnly(diff: Array<{ t: DiffLineType; c: string }>): boolean 
 
 // ── Diff extraction ──
 
-/** Extract deleted lines from the diff that belong to a removed method/constant */
 function extractDeletedBlockDiff(
   name: string, diff: FileDiff,
 ): Array<{ t: DiffLineType; c: string }> {
@@ -328,55 +297,4 @@ function extractMethodDiff(
     }
   }
   return result;
-}
-
-// ── Links → Edges (optimized O(n)) ──
-
-function linksToEdges(
-  links: DetectedLink[], files: ParsedFile[],
-  galaxies: { systems: { planets: { id: string; methods: { sigChanged: boolean }[] }[] }[] }[],
-): EdgeData[] {
-  // Build planet id set + sigChanged map
-  const planetIds = new Set<string>();
-  const sigChangedMap = new Map<string, boolean>();
-  for (const g of galaxies) {
-    for (const s of g.systems) {
-      for (const p of s.planets) {
-        planetIds.add(p.id);
-        if (p.methods.some(m => m.sigChanged)) sigChangedMap.set(p.id, true);
-      }
-    }
-  }
-
-  // Build filepath → planet id + file → repo maps
-  const idByRepoFile = new Map<string, string>();
-  const repoByFile = new Map<string, string>();
-  for (const f of files) {
-    repoByFile.set(f.path, f.repoName);
-    const suffix = f.path.replace(/\//g, '-').replace(/\./g, '_');
-    const expectedId = `p-${f.repoName}-${suffix}`;
-    if (planetIds.has(expectedId)) {
-      idByRepoFile.set(`${f.repoName}:${f.path}`, expectedId);
-    }
-  }
-
-  return links.map(link => {
-    const fromRepo = repoByFile.get(link.fromFile) ?? '';
-    const toRepo = repoByFile.get(link.toFile) ?? '';
-    const fromId = idByRepoFile.get(`${fromRepo}:${link.fromFile}`);
-    const toId = idByRepoFile.get(`${toRepo}:${link.toFile}`);
-    if (!fromId || !toId || fromId === toId) return null;
-
-    const hasSigChange = sigChangedMap.get(toId) ?? false;
-    return {
-      from: fromId, to: toId, label: link.label,
-      riskCrit: link.riskCrit,
-      cross: link.cross || undefined,
-      critical: link.riskCrit >= 7.5 || hasSigChange || undefined,
-      dashed: link.type === 'side-effect' || undefined,
-      linkType: link.type,
-      specifiers: link.specifiers,
-      sigChanged: hasSigChange || undefined,
-    };
-  }).filter(Boolean) as EdgeData[];
 }

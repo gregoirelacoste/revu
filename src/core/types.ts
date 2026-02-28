@@ -93,7 +93,7 @@ export interface DetectedLink {
   specifiers?: string[];
 }
 
-// ── Layout / API Response ──
+// ── Method/Constant diff data ──
 
 export interface MethodData {
   name: string;
@@ -106,63 +106,6 @@ export interface MethodData {
   httpVerb?: string;
   impacted?: boolean;
   diff: Array<{ t: DiffLineType; c: string }>;
-}
-
-export interface PlanetData {
-  id: string;
-  name: string;
-  ext: string;
-  type: FileType;
-  crit: number;
-  add: number;
-  del: number;
-  tested: boolean;
-  sideEffect?: boolean;
-  ox: number;
-  oy: number;
-  methods: MethodData[];
-  constants: MethodData[];
-}
-
-export interface SystemData {
-  id: string;
-  label: string;
-  fullPath: string;
-  cx: number;
-  cy: number;
-  r: number;
-  planets: PlanetData[];
-  children?: SystemData[];
-}
-
-export interface GalaxyData {
-  id: string;
-  label: string;
-  branch: string;
-  color: string;
-  cx: number;
-  cy: number;
-  rx: number;
-  ry: number;
-  systems: SystemData[];
-}
-
-export interface EdgeData {
-  from: string;
-  to: string;
-  label: string;
-  riskCrit: number;
-  cross?: boolean;
-  critical?: boolean;
-  dashed?: boolean;
-  linkType?: LinkType;
-  specifiers?: string[];
-  sigChanged?: boolean;
-}
-
-export interface ScanResponse {
-  galaxies: GalaxyData[];
-  edges: EdgeData[];
 }
 
 // ── Review ──
