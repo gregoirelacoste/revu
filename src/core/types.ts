@@ -172,6 +172,7 @@ export interface MethodReview {
 export interface FileReview {
   flag?: Flag;
   methods: Record<string, MethodReview>;
+  lines?: Record<string, { flag?: Flag; comments: Array<{ text: string; time: string }> }>;
 }
 
 export interface ReviewData {

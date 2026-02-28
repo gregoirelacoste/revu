@@ -1,6 +1,10 @@
 // ── TUI-specific types ──
 
-import type { DiffLineType, MethodData } from '../core/types.js';
+// ── Review flags ──
+
+export type LineFlag = 'ok' | 'bug' | 'question';
+export interface LineComment { text: string; time: string; }
+export interface ReviewStats { total: number; reviewed: number; bugs: number; questions: number; comments: number; }
 
 // ── Explorer tree ──
 
@@ -72,4 +76,5 @@ export interface ContextData {
   summary: string;
   chunks: ChunkInfo[];
   usedBy?: UsedByEntry[];
+  reviewStats?: ReviewStats;
 }

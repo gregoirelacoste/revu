@@ -19,6 +19,28 @@ export const C = {
 export const critColor = (v: number): string =>
   v >= 7 ? C.red : v >= 4.5 ? C.orange : v >= 2.5 ? C.blue : C.green;
 
+export const critBg = (v: number, t: 'add' | 'del'): string => {
+  const intensity = Math.min(1, v / 10);
+  if (t === 'add') {
+    const g = Math.round(30 + intensity * 25);
+    return `#0a${g.toString(16).padStart(2, '0')}0a`;
+  }
+  const r = Math.round(30 + intensity * 25);
+  return `#${r.toString(16).padStart(2, '0')}0a0a`;
+};
+
+export const FLAG_ICON: Record<string, string> = {
+  ok: '\u2713',
+  bug: '\u2717',
+  question: '?',
+};
+
+export const FLAG_COLOR: Record<string, string> = {
+  ok: C.green,
+  bug: C.red,
+  question: C.orange,
+};
+
 export const TYPE_ICON: Record<string, { icon: string; color: string }> = {
   controller: { icon: 'C', color: C.green },
   service: { icon: 'S', color: C.blue },

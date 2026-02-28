@@ -3,57 +3,72 @@
 ## Etat actuel
 
 Le core pipeline (scan → parse → analyze → score) est complet et stable.
-Le TUI 3 panneaux (Ink) est fonctionnel avec navigation clavier, diff side-by-side, et review persistence basique.
+Le TUI 3 panneaux (Ink) est fonctionnel avec navigation clavier, diff side-by-side, curseur ligne,
+flags review (ok/bug/question), contraste progressif, indicateurs explorer, et review persistence v2.
 
 Lancer : `npx tsx src/cli.ts ..`
 
 ---
 
-## Phase 1 — Bugs & polish (priorité haute)
+## Phase 1 — Bugs & polish (terminée)
 
-- [ ] **Auto-select premier fichier** : le panneau DIFF est vide au démarrage, l'auto-select via useEffect ne semble pas fonctionner en situation réelle. Investiguer et fixer.
-- [ ] **Troncature texte** : les lignes longues débordent des panneaux. Tronquer proprement avec `…` selon la largeur disponible.
-- [ ] **Alignement colonnes** : le score de criticité dans l'Explorer n'est pas aligné à droite (il suit le nom du fichier).
-- [ ] **Numéros de ligne dans le diff** : le brief spécifie des numéros de ligne alignés côté base et côté review. Actuellement absents.
+- [x] **Auto-select premier fichier** : fix useEffect + setTreeIdx pour sync focus
+- [x] **Troncature texte** : `…` dans TreeRow, DLine, ContextPanel (noms, code, labels, usedBy)
+- [x] **Alignement colonnes** : score aligné à droite avec padding dynamique dans TreeRow
+- [x] **Numéros de ligne dans le diff** : compteurs base/review indépendants dans data.ts
 
 ---
 
-## Phase 2 — Fonctionnalités manquantes du brief (MVP)
+## Phase 2 — Fonctionnalités MVP (terminée)
 
 ### Explorer (panneau gauche)
 
-- [ ] **Indicateurs review par fichier** : afficher `✓` (tout reviewé), `◐` (partiel), rien (pas commencé), `⚡` (side-effect) devant chaque fichier/dossier
-- [ ] **Fichiers reviewés atténués** : couleur dim pour les fichiers entièrement checkés
-- [ ] **Shift+Tab** : panel précédent (actuellement seul Tab fonctionne, fait le cycle dans un sens)
-- [ ] **Alt+B** : sélecteur de branche sur un repo
-- [ ] **Recherche fichier fuzzy** : touche `/` pour chercher un fichier par nom
+- [x] **Indicateurs review par fichier** : `✓` (tout reviewé), `◐` (partiel) devant chaque fichier
+- [x] **Fichiers reviewés atténués** : couleur dim pour les fichiers entièrement checkés
+- [x] **Shift+Tab** : panel précédent (cycle dans les deux sens)
 
 ### Diff (panneau central)
 
-- [ ] **Hunks triés par criticité décroissante** : actuellement triés par ordre d'apparition dans le fichier
-- [ ] **Contraste progressif** : intensité visuelle proportionnelle à la criticité (fond intense ≥7, moyen 5-7, subtil 2.5-5, dim <2.5). Feature clé du brief.
-- [ ] **Saut entre hunks** : touches `{` et `}` pour sauter au hunk précédent/suivant
-- [ ] **Flag bug** : touche `x` pour marquer une ligne comme bug (✗)
-- [ ] **Flag question** : touche `?` pour marquer comme question
-- [ ] **Commentaires inline** : touche `m` pour ouvrir un input sous la ligne, avec timestamps et empilement
-- [ ] **Lignes de signature (isSig)** : bordure gauche épaisse, bold, score toujours affiché, toujours visibles même si sous le seuil de criticité
-- [ ] **Curseur de ligne** : actuellement le scroll est par viewport, pas de curseur sur une ligne spécifique. Le brief veut un curseur ligne par ligne pour pouvoir `c`/`x`/`?`/`m` sur n'importe quelle ligne.
+- [x] **Hunks triés par criticité décroissante**
+- [x] **Contraste progressif** : fond via `critBg()`, texte ≥7 white bold, ≥5 bright, ≥2.5 text, <2.5 dim
+- [x] **Curseur de ligne** : `▌` accent, navigation ↑↓, PgUp/PgDn avec auto-scroll
+- [x] **Saut entre hunks** : `{` et `}` pour hunk précédent/suivant
+- [x] **Flag ok** : touche `c` (toggle)
+- [x] **Flag bug** : touche `x` (toggle)
+- [x] **Flag question** : touche `?` (toggle)
+- [x] **Lignes de signature (isSig)** : bordure `┃` accent, bold, score toujours affiché
 
 ### Context (panneau droit)
 
-- [ ] **Mode Review Summary** (focus repo) : stats globales, chunks critiques triés, side-effects, flags posés
-- [ ] **Mode Dossier** amélioré : stats du dossier (nb fichiers, signatures changées, +/- lignes)
-- [ ] **Mode Fichier** amélioré : progression review (X/Y lignes), section FLAGS avec commentaires
-- [ ] **Mode Ligne** : quand le curseur est sur une ligne contenant un appel identifiable, afficher la cible, sa signature, ses dépendances, appelants
-- [ ] **Navigation Enter dans Context** : sauter au fichier/ligne correspondant (partiellement implémenté)
+- [x] **Stats review** : section `✓ reviewed/total ✗ bugs ? questions 💬 comments`
+- [x] **Mode Dossier** enrichi : nb fichiers, +add -del, sig count, reviewStats
+- [x] **Mode Fichier** enrichi : progression review (X/Y lignes, pourcentage), usedBy
+- [x] **Mode Repo** enrichi : stats globales agrégées
+- [x] **Navigation Enter** : sauter du Context au hunk correspondant dans le Diff
 
 ### Barre de statut
 
-- [ ] **Stats complètes** : `✓ 18/34 (53%)  ✗ 2 bugs  ? 1 question  💬 5 comments` (actuellement juste `✓ N`)
+- [x] **Stats complètes** : `✓ reviewed/total (pct%) ✗ bugs ? questions 💬 comments` + hints clavier
+- [x] **Composant extrait** : StatusBar.tsx avec padding dynamique
+
+### Persistence v2
+
+- [x] **useReview v2** : `Map<string, LineReview>` avec flag + comments par ligne
+- [x] **Format JSON v2** : flags par ligne, commentaires avec timestamps, backward-compatible
+- [x] **Sauvegarde debounced** : 500ms, par repo+branche
 
 ---
 
-## Phase 3 — Side-effects detection
+## Phase 3 — Features reportées
+
+- [ ] **Alt+B** : sélecteur de branche sur un repo (widget picker UI)
+- [ ] **Recherche fichier fuzzy** : touche `/` pour chercher par nom (widget input + filter)
+- [ ] **Commentaires inline** : touche `m` pour ouvrir un input sous la ligne (nécessite ink-text-input ou custom)
+- [ ] **Mode Ligne** dans Context : quand le curseur est sur un appel, afficher la cible, signature, dépendances (cross-ref AST)
+
+---
+
+## Phase 4 — Side-effects detection
 
 - [ ] **Détecter les fichiers impactés** : fichiers non modifiés qui consomment une méthode dont la signature a changé
 - [ ] **Afficher le flag ⚡** dans l'Explorer et le Context
@@ -61,21 +76,11 @@ Lancer : `npx tsx src/cli.ts ..`
 
 ---
 
-## Phase 4 — Navigation avancée
+## Phase 5 — Navigation avancée
 
-- [ ] **Historique de navigation** : `Alt+←` / `Alt+→` (back/forward comme dans un navigateur)
+- [ ] **Historique de navigation** : `Alt+←` / `Alt+→` (back/forward)
 - [ ] **Alt+S** : sauter au Review Summary (focus repo)
 - [ ] **Alt+C** : sélecteur de seuil de criticité (prompt numérique)
-
----
-
-## Phase 5 — Persistence v2
-
-Le format de review actuel est basique (Set de clés `fileId:lineNum`). Le brief définit un format riche :
-
-- [ ] **Format JSON v2** : flags par ligne (ok/bug/question), commentaires avec auteur et timestamp, stats agrégées, statut par fichier (partial/complete/not_started)
-- [ ] **Fichier nommé par repo+branche** : `.revu/reviews/{repo}_{branch}.json`
-- [ ] **Auto-save** après chaque action (actuellement debounced 500ms — OK)
 
 ---
 
@@ -90,7 +95,7 @@ Le format de review actuel est basique (Set de clés `fileId:lineNum`). Le brief
 
 ## Phase 7 — Config complète
 
-- [ ] **`lineCriticality`** : multiplicateurs par type de ligne (signatureChange: 2.0, returnTypeChange: 1.8, etc.). Partiellement implémenté dans le scoring mais pas exploité à fond.
+- [ ] **`lineCriticality`** : multiplicateurs par type de ligne (partiellement implémenté dans le scoring)
 - [ ] **`rules.alwaysShow`** : certains changements toujours visibles quel que soit le seuil
 - [ ] **`rules.sideEffectDetection`** : toggle on/off
 - [ ] **`rules.minCritForDisplay`** : seuil par défaut au démarrage
@@ -108,17 +113,20 @@ Le format de review actuel est basique (Set de clés `fileId:lineNum`). Le brief
 
 ---
 
-## Fichiers clés à modifier
+## Fichiers clés
 
-| Fichier | Prochaines modifs |
-|---------|-------------------|
-| `src/tui/App.tsx` | Auto-select fix, curseur diff, stats barre de statut |
-| `src/tui/hooks/useNavigation.ts` | `{` `}` hunks, `x` `?` `m` flags, `Shift+Tab`, `Alt+*` |
-| `src/tui/components/DLine.tsx` | Contraste progressif, numéros de ligne, lignes isSig |
-| `src/tui/components/TreeRow.tsx` | Indicateurs review (✓◐⚡), dim fichiers reviewés |
-| `src/tui/components/ContextPanel.tsx` | 4 modes (repo/dossier/fichier/ligne), stats |
-| `src/tui/context.ts` | Enrichir les 4 modes de contexte |
-| `src/tui/data.ts` | Tri hunks par criticité |
-| `src/tui/hooks/useReview.ts` | Format v2 (flags, commentaires, stats) |
-| `src/core/engine.ts` | Side-effects detection |
-| `src/core/analyzer/link-detector.ts` | Side-effects : croiser liens avec signatures changées |
+| Fichier | Rôle |
+|---------|------|
+| `src/tui/App.tsx` | Root component, wire state + 3 panels + status bar |
+| `src/tui/hooks/useNavigation.ts` | Keyboard input, 3 handlers per-panel |
+| `src/tui/hooks/useReview.ts` | Review persistence v2 (line-level flags + comments) |
+| `src/tui/components/DLine.tsx` | Diff line rendering (contraste, curseur, flags, isSig) |
+| `src/tui/components/TreeRow.tsx` | Explorer row (progress indicators, dim complete) |
+| `src/tui/components/ContextPanel.tsx` | Context panel (chunks, stats, usedBy) |
+| `src/tui/components/StatusBar.tsx` | Status bar (review stats + hints) |
+| `src/tui/context.ts` | Context builders (file/folder/repo) with reviewStats |
+| `src/tui/data.ts` | ScanResult → TUI tree + diff rows (hunks sorted by crit) |
+| `src/tui/review-stats.ts` | Shared review stats computation (DRY) |
+| `src/tui/colors.ts` | Palette, critColor, critBg, FLAG_ICON/FLAG_COLOR |
+| `src/tui/types.ts` | TUI-specific types |
+| `src/core/engine.ts` | Core scan orchestrator |

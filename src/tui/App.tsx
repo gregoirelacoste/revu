@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Box, Text } from 'ink';
-import { C, critColor } from './colors.js';
+import { C, critColor, FLAG_ICON, FLAG_COLOR } from './colors.js';
 import { useTermSize } from './hooks/useTermSize.js';
 import { useNavigation } from './hooks/useNavigation.js';
 import { useReview } from './hooks/useReview.js';
@@ -8,8 +8,10 @@ import { Border } from './components/Border.js';
 import { TreeRow } from './components/TreeRow.js';
 import { DLine } from './components/DLine.js';
 import { ContextPanel } from './components/ContextPanel.js';
+import { StatusBar } from './components/StatusBar.js';
 import { buildTree, flattenTree, buildFileDiffs } from './data.js';
 import { getFileContext, getFolderContext, getRepoContext } from './context.js';
+import { computeFileReviewStats, computeGlobalReviewStats } from './review-stats.js';
 import type { ScanResult } from '../core/engine.js';
 import type { ContextData } from './types.js';
 
@@ -32,25 +34,28 @@ export function App({ data, rootDir }: AppProps) {
   const [diffScroll, setDiffScroll] = useState(0);
   const [ctxIdx, setCtxIdx] = useState(0);
   const [minCrit, setMinCrit] = useState(0);
-  const { checkedLines, setCheckedLines } = useReview(rootDir, data);
+  const [diffCursor, setDiffCursor] = useState(0);
+  const { lineReviews, setLineFlag } = useReview(rootDir, data);
 
   // Recompute flat tree when collapsed changes
   const flatTree = useMemo(() => flattenTree(tree, collapsed), [tree, collapsed]);
 
   // Clamp treeIdx when flatTree shrinks (folder collapsed)
-  const clampedTreeIdx = Math.min(treeIdx, Math.max(0, flatTree.length - 1));
-  if (clampedTreeIdx !== treeIdx) {
-    setTreeIdx(clampedTreeIdx);
-  }
+  const safeIdx = Math.min(treeIdx, Math.max(0, flatTree.length - 1));
+  useEffect(() => {
+    if (safeIdx !== treeIdx) setTreeIdx(safeIdx);
+  }, [safeIdx, treeIdx]);
 
   // Auto-select first file with diff (once)
   const didAutoSelect = useRef(false);
   useEffect(() => {
     if (didAutoSelect.current || selectedFile !== null) return;
-    didAutoSelect.current = true;
-    for (const item of flatTree) {
+    for (let i = 0; i < flatTree.length; i++) {
+      const item = flatTree[i];
       if (!item.isFolder && item.node.id && diffs.has(item.node.id)) {
+        didAutoSelect.current = true;
         setSelectedFile(item.node.id);
+        setTreeIdx(i);
         return;
       }
     }
@@ -64,7 +69,6 @@ export function App({ data, rootDir }: AppProps) {
   const treeVisibleH = Math.max(1, bodyH - 4);
 
   // Tree scroll: keep treeIdx visible
-  const safeIdx = clampedTreeIdx;
   const treeScroll = useMemo(() => {
     if (flatTree.length <= treeVisibleH) return 0;
     const maxScroll = flatTree.length - treeVisibleH;
@@ -76,22 +80,47 @@ export function App({ data, rootDir }: AppProps) {
   const currentDiff = selectedFile ? diffs.get(selectedFile) ?? null : null;
   const diffRows = currentDiff?.rows ?? [];
 
+  // Clamp diffCursor when switching files
+  const safeDiffCursor = Math.min(diffCursor, Math.max(0, diffRows.length - 1));
+  useEffect(() => {
+    if (safeDiffCursor !== diffCursor && diffRows.length > 0) setDiffCursor(safeDiffCursor);
+  }, [safeDiffCursor, diffCursor, diffRows.length]);
+
+  // File review progress for explorer indicators
+  const fileProgress = useMemo(() => {
+    const map = new Map<string, 'none' | 'partial' | 'complete'>();
+    for (const [fileId, diff] of diffs) {
+      const s = computeFileReviewStats(fileId, diff, lineReviews);
+      if (s.total === 0) map.set(fileId, 'none');
+      else if (s.reviewed >= s.total) map.set(fileId, 'complete');
+      else if (s.reviewed > 0) map.set(fileId, 'partial');
+      else map.set(fileId, 'none');
+    }
+    return map;
+  }, [diffs, lineReviews]);
+
+  // Global review stats (memoized, shared)
+  const globalStats = useMemo(
+    () => computeGlobalReviewStats(diffs, lineReviews),
+    [diffs, lineReviews],
+  );
+
   const ctx = useMemo((): ContextData | null => {
     const item = flatTree[safeIdx];
     if (!item) return null;
-    if (item.node.id && diffs.has(item.node.id)) return getFileContext(item.node.id, data, diffs);
-    if (item.node.type === 'repo') return getRepoContext(item.node.name, data, diffs);
-    if (item.isFolder) return getFolderContext(item.node.name, data, diffs);
+    if (item.node.id && diffs.has(item.node.id)) return getFileContext(item.node.id, data, diffs, lineReviews);
+    if (item.node.type === 'repo') return getRepoContext(item.node.name, data, diffs, lineReviews);
+    if (item.isFolder) return getFolderContext(item.node.name, data, diffs, lineReviews);
     return null;
-  }, [safeIdx, flatTree, data, diffs]);
+  }, [safeIdx, flatTree, data, diffs, lineReviews]);
 
   const branches = data.repos.map(r => r.branch).filter(b => b !== 'develop' && b !== 'main');
   const branchLabel = branches[0] ?? 'HEAD';
 
   // Navigation
   useNavigation(
-    { panel, treeIdx: safeIdx, selectedFile, diffScroll, ctxIdx, minCrit, checkedLines, collapsed },
-    { setPanel, setTreeIdx, setSelectedFile, setDiffScroll, setCtxIdx, setMinCrit, setCheckedLines, setCollapsed },
+    { panel, treeIdx: safeIdx, selectedFile, diffScroll, diffCursor: safeDiffCursor, ctxIdx, minCrit, collapsed },
+    { setPanel, setTreeIdx, setSelectedFile, setDiffScroll, setDiffCursor, setCtxIdx, setMinCrit, setLineFlag, setCollapsed },
     { flatTree, diffRows, diffs, ctx, bodyH },
   );
 
@@ -124,6 +153,8 @@ export function App({ data, rootDir }: AppProps) {
                 isSelected={item.node.id === selectedFile}
                 isFocused={panel === 0 && (treeScroll + i) === safeIdx}
                 isCollapsed={item.isFolder && collapsed.has(item.id)}
+                width={treeW - 2}
+                progress={item.node.id ? fileProgress.get(item.node.id) : undefined}
               />
             ))}
             {flatTree.length > treeVisibleH && (
@@ -142,11 +173,13 @@ export function App({ data, rootDir }: AppProps) {
           {currentDiff ? (
             <Box flexDirection="column" overflow="hidden">
               {visibleDiffRows.map((row, i) => {
+                const rowIndex = diffScroll + i;
                 if (row.type === 'hunkHeader') {
                   const hc = critColor(row.methodCrit);
+                  const isCur = panel === 1 && rowIndex === safeDiffCursor;
                   return (
                     <Box key={`h${i}`}>
-                      <Text color={hc} bold>{'\u2500\u2500'}</Text>
+                      <Text color={isCur ? C.accent : hc} bold>{isCur ? '\u25B6' : '\u2500'}{'\u2500'}</Text>
                       <Text color={hc} bold> {row.method} </Text>
                       <Text color={C.dim}>({row.label})</Text>
                       <Text> </Text>
@@ -155,18 +188,22 @@ export function App({ data, rootDir }: AppProps) {
                   );
                 }
                 const lineKey = row.reviewLine ? `${selectedFile}:${row.reviewLine.n}` : '';
-                const checked = checkedLines.has(lineKey);
+                const review = lineReviews.get(lineKey);
+                const flag = review?.flag;
+                const isCur = panel === 1 && rowIndex === safeDiffCursor;
                 return (
                   <Box key={`d${i}`}>
                     <Box width={halfDiff}>
-                      <DLine line={row.baseLine ?? null} width={halfDiff} minCrit={minCrit} showCrit={false} />
+                      <DLine line={row.baseLine ?? null} width={halfDiff} minCrit={minCrit} showCrit={false} isCursor={false} />
                     </Box>
                     <Text color={C.border}>{'\u2502'}</Text>
                     <Box width={halfDiff}>
-                      <DLine line={row.reviewLine ?? null} width={halfDiff - 4} minCrit={minCrit} showCrit={true} />
+                      <DLine line={row.reviewLine ?? null} width={halfDiff - 4} minCrit={minCrit} showCrit={true} isCursor={isCur} flag={flag} />
                     </Box>
                     {row.reviewLine && (row.reviewLine.t === 'add' || row.reviewLine.t === 'del') ? (
-                      <Text color={checked ? C.green : C.dim}>{checked ? ' \u2713' : ' \u25CB'}</Text>
+                      <Text color={flag ? (FLAG_COLOR[flag] ?? C.dim) : C.dim}>
+                        {flag ? ` ${FLAG_ICON[flag]}` : ' \u25CB'}
+                      </Text>
                     ) : (
                       <Text>{'  '}</Text>
                     )}
@@ -193,12 +230,7 @@ export function App({ data, rootDir }: AppProps) {
       </Box>
 
       {/* Status bar */}
-      <Box height={1} width={size.w}>
-        <Text backgroundColor={C.accent} color="#ffffff">{` ${data.repos.length} repo(s) `}</Text>
-        <Text backgroundColor="#3c3c3c" color={C.bright}>{' Tab:\u21B9  \u2190\u2191\u2193\u2192:nav  Enter:toggle  c:check  [/]:crit  q:quit '}</Text>
-        <Text backgroundColor="#3c3c3c" color={C.dim}>{'\u2500'.repeat(Math.max(0, size.w - 75))}</Text>
-        <Text backgroundColor="#3c3c3c" color={C.green}>{' \u2713'}{checkedLines.size}{' '}</Text>
-      </Box>
+      <StatusBar repoCount={data.repos.length} stats={globalStats} width={size.w} />
     </Box>
   );
 }

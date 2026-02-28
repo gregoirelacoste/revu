@@ -1,8 +1,7 @@
 // ── Transform ScanResult → TUI data structures ──
 
-import { dirname } from 'node:path';
 import type { ScanResult, FileEntry, RepoEntry } from '../core/engine.js';
-import type { MethodData, DetectedLink } from '../core/types.js';
+import type { MethodData } from '../core/types.js';
 import type {
   TreeItem, FlatItem, TuiFileDiff, DiffRow,
   TuiDiffLine, UsedByEntry,
@@ -92,7 +91,8 @@ export function buildFileDiffs(result: ScanResult): Map<string, TuiFileDiff> {
       const changed = allMethods.filter(m => m.status !== 'unch');
       if (changed.length === 0) continue;
 
-      const rows = buildDiffRows(changed);
+      const sorted = [...changed].sort((a, b) => b.crit - a.crit);
+      const rows = buildDiffRows(sorted);
       diffs.set(file.id, {
         name: `${file.name}${file.ext}`,
         path: file.path,
@@ -119,14 +119,15 @@ function buildDiffRows(methods: MethodData[]): DiffRow[] {
     });
 
     if (m.status === 'del') {
-      // Deleted: all lines on base side
+      let delLineNum = 0;
       for (const d of m.diff) {
+        delLineNum++;
         rows.push({
           type: 'diffRow',
           method: m.name,
           methodCrit: m.crit,
           label,
-          baseLine: { n: 0, c: d.c, t: 'del', crit: m.crit },
+          baseLine: { n: delLineNum, c: d.c, t: 'del', crit: m.crit },
           reviewLine: null,
         });
       }
@@ -136,22 +137,26 @@ function buildDiffRows(methods: MethodData[]): DiffRow[] {
     // Split diff lines into base (del/ctx) and review (add/ctx)
     const baseLines: TuiDiffLine[] = [];
     const reviewLines: TuiDiffLine[] = [];
-    let lineNum = 0;
+    let baseLineNum = 0;
+    let reviewLineNum = 0;
 
     for (const d of m.diff) {
-      lineNum++;
       if (d.t === 'd') {
-        baseLines.push({ n: lineNum, c: d.c, t: 'del', crit: m.crit * 0.8 });
+        baseLineNum++;
+        baseLines.push({ n: baseLineNum, c: d.c, t: 'del', crit: m.crit * 0.8 });
       } else if (d.t === 'a') {
-        const isSig = m.sigChanged && lineNum <= 2;
+        reviewLineNum++;
+        const isSig = m.sigChanged && reviewLineNum <= 2;
         reviewLines.push({
-          n: lineNum, c: d.c, t: 'add',
+          n: reviewLineNum, c: d.c, t: 'add',
           crit: isSig ? m.crit : m.crit * 0.6,
           isSig,
         });
       } else {
-        baseLines.push({ n: lineNum, c: d.c, t: 'ctx' });
-        reviewLines.push({ n: lineNum, c: d.c, t: 'ctx' });
+        baseLineNum++;
+        reviewLineNum++;
+        baseLines.push({ n: baseLineNum, c: d.c, t: 'ctx' });
+        reviewLines.push({ n: reviewLineNum, c: d.c, t: 'ctx' });
       }
     }
 

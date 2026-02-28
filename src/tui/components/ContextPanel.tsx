@@ -17,6 +17,7 @@ export function ContextPanel({ ctx, ctxIdx, isActive, width, minCrit }: ContextP
   }
 
   const filtered = ctx.chunks.filter(c => c.crit >= minCrit);
+  const stats = ctx.reviewStats;
 
   return (
     <Box flexDirection="column" overflow="hidden">
@@ -24,9 +25,28 @@ export function ContextPanel({ ctx, ctxIdx, isActive, width, minCrit }: ContextP
       <Box>
         <Text color={critColor(ctx.crit)} bold>{ctx.crit.toFixed(1)}</Text>
         <Text> </Text>
-        <Text color={C.white} bold>{ctx.name}</Text>
+        <Text color={C.white} bold>
+          {ctx.name.length > width - 8
+            ? ctx.name.slice(0, width - 9) + '\u2026'
+            : ctx.name}
+        </Text>
       </Box>
-      <Text color={C.dim}>{ctx.summary}</Text>
+      <Text color={C.dim}>
+        {ctx.summary.length > width - 4
+          ? ctx.summary.slice(0, width - 5) + '\u2026'
+          : ctx.summary}
+      </Text>
+
+      {/* Review stats */}
+      {stats && stats.total > 0 && (
+        <Box>
+          <Text color={C.green}>{'\u2713 '}{stats.reviewed}/{stats.total}</Text>
+          {stats.bugs > 0 && <Text color={C.red}>{' \u2717 '}{stats.bugs}</Text>}
+          {stats.questions > 0 && <Text color={C.orange}>{' ? '}{stats.questions}</Text>}
+          {stats.comments > 0 && <Text color={C.cyan}>{' \uD83D\uDCAC '}{stats.comments}</Text>}
+        </Box>
+      )}
+
       <Text color={C.dim}>{'\u2500'.repeat(Math.max(0, width - 4))}</Text>
 
       {/* Chunks */}
@@ -42,10 +62,14 @@ export function ContextPanel({ ctx, ctxIdx, isActive, width, minCrit }: ContextP
               <Text color={critColor(chunk.crit)} bold>{chunk.crit.toFixed(1)}</Text>
               <Text> </Text>
               <Text color={isFoc ? C.white : C.bright} bold={isFoc}>
-                {chunk.method}
+                {chunk.method.length > width - 10
+                  ? chunk.method.slice(0, width - 11) + '\u2026'
+                  : chunk.method}
               </Text>
             </Box>
-            <Text color={C.dim}>{'   '}{chunk.label.slice(0, width - 8)}</Text>
+            <Text color={C.dim}>{'   '}{chunk.label.length > width - 8
+              ? chunk.label.slice(0, width - 9) + '\u2026'
+              : chunk.label}</Text>
           </Box>
         );
       })}
@@ -59,9 +83,15 @@ export function ContextPanel({ ctx, ctxIdx, isActive, width, minCrit }: ContextP
             <Box key={i} flexDirection="column">
               <Box>
                 <Text> </Text>
-                <Text color={C.cyan}>{u.file}</Text>
+                <Text color={C.cyan}>
+                  {u.file.length > width - 5
+                    ? u.file.slice(0, width - 6) + '\u2026'
+                    : u.file}
+                </Text>
               </Box>
-              <Text color={C.dim}>   {u.method}</Text>
+              <Text color={C.dim}>   {u.method.length > width - 7
+                ? u.method.slice(0, width - 8) + '\u2026'
+                : u.method}</Text>
             </Box>
           ))}
         </Box>
