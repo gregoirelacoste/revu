@@ -13,7 +13,7 @@ import { buildMethodData, buildConstantData, buildUncoveredDiff } from './analyz
 import { detectSideEffects } from './analyzer/side-effects.js';
 import type {
   ParsedFile, FileDiff, MethodData,
-  DetectedLink, RepoInfo, RevuConfig, ScoringConfig,
+  DetectedLink, RepoInfo, RevuConfig, ScoringConfig, ScoringOverride,
 } from './types.js';
 
 // ── Result types ──
@@ -36,6 +36,8 @@ export interface FileEntry {
 export interface RepoEntry {
   name: string;
   branch: string;
+  baseBranch: string;
+  headSha: string;
   files: FileEntry[];
 }
 
@@ -102,7 +104,7 @@ async function processRepo(
 
   return {
     parsedFiles,
-    entry: { name: repo.name, branch: repo.currentBranch, files },
+    entry: { name: repo.name, branch: repo.currentBranch, baseBranch: repo.baseBranch, headSha: repo.headSha, files },
   };
 }
 
@@ -224,6 +226,69 @@ function enrichWithDependencies(repos: RepoEntry[], links: DetectedLink[], scori
         m.usages = usages;
         m.crit = computeMethodCriticality(
           scoring, file.crit, usages, maxUsage, m.sigChanged, `${file.dir}/${file.name}${file.ext}`,
+        );
+      }
+    }
+  }
+}
+
+// ── Rescore with AI overrides — mutates in place, caller must force re-render ──
+
+export function rescore(result: ScanResult, override: ScoringOverride): void {
+  const scoring = result.config.scoring;
+
+  // Build overridden fileTypes from categoryOverrides
+  const overriddenFileTypes = { ...scoring.fileTypes };
+  if (override.categoryOverrides) {
+    for (const [category, ov] of Object.entries(override.categoryOverrides)) {
+      if (category in overriddenFileTypes) {
+        overriddenFileTypes[category] = overriddenFileTypes[category]! * ov.weight;
+      }
+    }
+  }
+
+  const overriddenScoring: ScoringConfig = {
+    ...scoring,
+    fileTypes: overriddenFileTypes,
+  };
+
+  // Pre-build dep count map (avoid O(n²) filter per file)
+  const depCount = new Map<string, number>();
+  for (const link of result.links) {
+    depCount.set(link.toFile, (depCount.get(link.toFile) ?? 0) + 1);
+  }
+
+  // Compute max method usages across all repos for normalization
+  let maxUsage = 1;
+  for (const repo of result.repos) {
+    for (const file of repo.files) {
+      for (const m of file.methods) {
+        if (m.usages > maxUsage) maxUsage = m.usages;
+      }
+    }
+  }
+
+  // Recompute file crits, then cascade to methods
+  for (const repo of result.repos) {
+    for (const file of repo.files) {
+      const fileOverride = override.fileOverrides?.[file.path];
+      const deps = depCount.get(file.path) ?? 0;
+
+      file.crit = computeFileCriticality(
+        overriddenScoring, file.type, file.add, file.del, deps,
+        `${file.dir}/${file.name}${file.ext}`,
+      );
+
+      if (fileOverride) {
+        file.crit = Math.round(file.crit * fileOverride.weight * 10) / 10;
+        file.crit = Math.min(10, Math.max(0, file.crit));
+      }
+
+      // Cascade to methods
+      for (const m of [...file.methods, ...file.constants]) {
+        m.crit = computeMethodCriticality(
+          overriddenScoring, file.crit, m.usages, maxUsage, m.sigChanged,
+          `${file.dir}/${file.name}${file.ext}`,
         );
       }
     }

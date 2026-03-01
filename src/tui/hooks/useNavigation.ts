@@ -18,6 +18,9 @@ interface NavState {
   inputMode: InputMode | null;
   searchQuery: string | null;
   showHelp: boolean;
+  showTutorial: boolean;
+  tutorialPage: number;
+  resetPrompt: boolean;
 }
 
 interface NavSetters {
@@ -35,8 +38,14 @@ interface NavSetters {
   setInputMode: (v: InputMode | null) => void;
   setSearchQuery: (v: string | null) => void;
   setShowHelp: (fn: (v: boolean) => boolean) => void;
+  setShowTutorial: (fn: (v: boolean) => boolean) => void;
+  setTutorialPage: (fn: (v: number) => number) => void;
+  tutorialPageCount: number;
   onExport?: () => void;
   onToggleDiffMode?: () => void;
+  onToggleAIScoring?: () => void;
+  onResetReview?: (scope: 'review' | 'ai' | 'all') => void;
+  setResetPrompt: (v: boolean) => void;
   historyPush?: (pos: NavPos) => void;
   historyGoBack?: (current: NavPos) => NavPos | null;
   historyGoForward?: (current: NavPos) => NavPos | null;
@@ -364,6 +373,25 @@ export function useNavigation(
       }
       if (input === 'h') { setters.setShowHelp(v => !v); return; }
 
+      // Tutorial overlay: 't' toggles, ←/→ navigate pages, Escape closes
+      if (state.showTutorial) {
+        if (input === 't' || key.escape || input === 'q') { setters.setShowTutorial(() => false); return; }
+        if (key.leftArrow) { setters.setTutorialPage(p => Math.max(0, p - 1)); return; }
+        if (key.rightArrow) { setters.setTutorialPage(p => Math.min(setters.tutorialPageCount - 1, p + 1)); return; }
+        return;
+      }
+      if (input === 't') { setters.setShowTutorial(v => !v); setters.setTutorialPage(() => 0); return; }
+
+      // Reset prompt: r=review, a=ai, A=all, Esc=cancel
+      if (state.resetPrompt) {
+        if (input === 'r') { setters.onResetReview?.('review'); setters.setBatchMsg('Review flags reset'); setTimeout(() => setters.setBatchMsg(null), 3000); }
+        else if (input === 'a') { setters.onResetReview?.('ai'); setters.setBatchMsg('AI scoring reset'); setTimeout(() => setters.setBatchMsg(null), 3000); }
+        else if (input === 'A') { setters.onResetReview?.('all'); setters.setBatchMsg('Full review reset'); setTimeout(() => setters.setBatchMsg(null), 3000); }
+        else { setters.setBatchMsg(null); } // Esc or any other key: cancel and clear prompt
+        setters.setResetPrompt(false);
+        return;
+      }
+
       // Search mode: capture all input
       if (state.searchQuery !== null) {
         // Tab closes search and falls through to panel switch below
@@ -412,6 +440,8 @@ export function useNavigation(
       if (input === '[') { setMinCrit(v => Math.max(0, v - 0.5)); return; }
       if (input === ']') { setMinCrit(v => Math.min(9, v + 0.5)); return; }
       if (key.meta && input === 'e') { setters.onExport?.(); return; }
+      if (key.meta && input === 'a') { setters.onToggleAIScoring?.(); return; }
+      if (key.meta && input === 'r') { setters.setResetPrompt(true); setters.setBatchMsg('Reset: [r]eview [a]i [A]ll [Esc]cancel'); return; }
 
       // Fuzzy search: /
       if (input === '/' && panel === 0) { setters.setSearchQuery(''); setters.setTreeIdx(() => 0); return; }

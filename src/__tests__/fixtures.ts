@@ -69,6 +69,8 @@ export function mockRepoEntry(overrides?: Partial<RepoEntry>): RepoEntry {
   return {
     name: 'my-repo',
     branch: 'feature/test',
+    baseBranch: 'develop',
+    headSha: 'abc123def',
     files: [mockFileEntry()],
     ...overrides,
   };

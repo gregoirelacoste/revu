@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { ReviewStore } from '../../core/review/review-store.js';
-import type { ReviewData, Flag } from '../../core/types.js';
+import type { ReviewData, Flag, ScoringOverride } from '../../core/types.js';
 import type { ScanResult } from '../../core/engine.js';
 import type { LineFlag, LineComment } from '../types.js';
 
@@ -18,11 +18,16 @@ export interface UseReviewResult {
   setLineFlag: (lineKey: string, flag: LineFlag | undefined) => void;
   setLineFlagBatch: (entries: Array<[string, LineFlag | undefined]>) => void;
   addLineComment: (lineKey: string, text: string) => void;
+  stale: boolean;
+  scoringOverride: ScoringOverride | null;
+  resetReview: (scope: 'review' | 'ai' | 'all') => void;
 }
 
 export function useReview(rootDir: string, data: ScanResult): UseReviewResult {
   const storeRef = useRef(new ReviewStore(rootDir));
   const [lineReviews, setLineReviews] = useState<Map<string, LineReview>>(new Map());
+  const [stale, setStale] = useState(false);
+  const [scoringOverride, setScoringOverride] = useState<ScoringOverride | null>(null);
   const loadedRef = useRef(false);
 
   // Load on mount
@@ -35,6 +40,17 @@ export function useReview(rootDir: string, data: ScanResult): UseReviewResult {
       for (const repo of data.repos) {
         const review = await storeRef.current.load(repo.name, repo.branch);
         if (!review) continue;
+
+        // Staleness detection: compare stored headSha with current
+        if (review.headSha && review.headSha !== repo.headSha) {
+          setStale(true);
+        }
+
+        // Load scoring override from first repo that has one
+        if (review.scoringOverride && !scoringOverride) {
+          setScoringOverride(review.scoringOverride);
+        }
+
         for (const [filePath, fileReview] of Object.entries(review.files)) {
           const file = repo.files.find(f => f.path === filePath);
           if (!file) continue;
@@ -123,22 +139,77 @@ export function useReview(rootDir: string, data: ScanResult): UseReviewResult {
     });
   }, [scheduleSave]);
 
-  return { lineReviews, setLineFlag, setLineFlagBatch, addLineComment };
+  const resetReview = useCallback((scope: 'review' | 'ai' | 'all') => {
+    if (scope === 'review' || scope === 'all') {
+      setLineReviews(new Map());
+    }
+    if (scope === 'ai' || scope === 'all') {
+      setScoringOverride(null);
+    }
+    // Persist the reset
+    (async () => {
+      for (const repo of data.repos) {
+        const existing = await storeRef.current.load(repo.name, repo.branch);
+        const now = new Date().toISOString();
+        if (scope === 'all') {
+          const review: ReviewData = {
+            version: 3, repo: repo.name, branch: repo.branch,
+            baseBranch: repo.baseBranch, headSha: repo.headSha,
+            createdAt: existing?.createdAt ?? now, updatedAt: now,
+            files: {},
+          };
+          await storeRef.current.save(repo.name, repo.branch, review);
+        } else if (scope === 'review') {
+          const review: ReviewData = {
+            version: 3, repo: repo.name, branch: repo.branch,
+            baseBranch: repo.baseBranch, headSha: repo.headSha,
+            createdAt: existing?.createdAt ?? now, updatedAt: now,
+            files: {},
+          };
+          if (existing?.scoringOverride) review.scoringOverride = existing.scoringOverride;
+          await storeRef.current.save(repo.name, repo.branch, review);
+        } else if (scope === 'ai') {
+          if (existing) {
+            delete existing.scoringOverride;
+            existing.headSha = repo.headSha;
+            existing.updatedAt = now;
+            await storeRef.current.save(repo.name, repo.branch, existing);
+          }
+        }
+      }
+      // Only clear stale when resetting review data or all (not just AI)
+      if (scope === 'review' || scope === 'all') setStale(false);
+    })().catch(err => {
+      process.stderr.write(`[REVU] Reset failed: ${err}\n`);
+    });
+  }, [data]);
+
+  return { lineReviews, setLineFlag, setLineFlagBatch, addLineComment, stale, scoringOverride, resetReview };
 }
 
 async function saveReviews(
   store: ReviewStore, data: ScanResult, reviews: Map<string, LineReview>,
 ): Promise<void> {
   for (const repo of data.repos) {
+    // Load existing to preserve createdAt and scoringOverride
+    const existing = await store.load(repo.name, repo.branch).catch(() => null);
+    const now = new Date().toISOString();
+
     const review: ReviewData = {
-      version: 2,
+      version: 3,
       repo: repo.name,
       branch: repo.branch,
-      baseBranch: 'develop',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      baseBranch: repo.baseBranch,
+      headSha: repo.headSha,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
       files: {},
     };
+
+    // Preserve scoringOverride from existing review
+    if (existing?.scoringOverride) {
+      review.scoringOverride = existing.scoringOverride;
+    }
 
     let hasData = false;
     for (const file of repo.files) {

@@ -15,7 +15,7 @@ const SECTIONS: { title: string; keys: [string, string][] }[] = [
       ['[ / ]', 'Adjust min criticality'],
       ['q', 'Quit'],
       ['h', 'Toggle this help'],
-      ['Alt+E', 'Export markdown'],
+      ['t', 'Tutorial (guided tour)'],
       ['/', 'Fuzzy search (explorer)'],
     ],
   },
@@ -56,6 +56,14 @@ const SECTIONS: { title: string; keys: [string, string][] }[] = [
     keys: [
       ['Alt+\u2190', 'Go back'],
       ['Alt+\u2192', 'Go forward'],
+    ],
+  },
+  {
+    title: 'SYSTEM',
+    keys: [
+      ['Alt+E', 'Export markdown (AI-ready)'],
+      ['Alt+A', 'Toggle AI scoring'],
+      ['Alt+R', 'Reset review'],
     ],
   },
 ];

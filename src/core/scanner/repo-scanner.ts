@@ -24,6 +24,15 @@ async function getCurrentBranch(repoPath: string): Promise<string | null> {
   }
 }
 
+async function getHeadSha(repoPath: string): Promise<string> {
+  try {
+    const { stdout } = await exec('git', ['rev-parse', 'HEAD'], { cwd: repoPath });
+    return stdout.trim();
+  } catch {
+    return 'unknown';
+  }
+}
+
 const IGNORED_BRANCHES = new Set(['master', 'main', 'develop']);
 
 export async function scanRepos(rootDir: string, baseBranch = 'develop'): Promise<RepoInfo[]> {
@@ -39,11 +48,13 @@ export async function scanRepos(rootDir: string, baseBranch = 'develop'): Promis
     const branch = await getCurrentBranch(fullPath);
     if (!branch || IGNORED_BRANCHES.has(branch)) continue;
 
+    const headSha = await getHeadSha(fullPath);
     repos.push({
       name: entry,
       path: fullPath,
       currentBranch: branch,
       baseBranch,
+      headSha,
     });
   }
 

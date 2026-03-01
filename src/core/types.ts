@@ -17,6 +17,7 @@ export interface RepoInfo {
   path: string;
   currentBranch: string;
   baseBranch: string;
+  headSha: string;
 }
 
 export interface DiffLine {
@@ -180,7 +181,19 @@ export interface ReviewData {
   repo: string;
   branch: string;
   baseBranch: string;
+  headSha?: string;
   createdAt: string;
   updatedAt: string;
   files: Record<string, FileReview>;
+  scoringOverride?: ScoringOverride;
+}
+
+export interface ScoringOverride {
+  version: number;
+  headSha: string;
+  generatedAt: string;
+  generatedBy: 'ai' | 'manual';
+  rationale: string;
+  categoryOverrides?: Record<string, { weight: number; reason: string }>;
+  fileOverrides?: Record<string, { weight: number; reason: string }>;
 }

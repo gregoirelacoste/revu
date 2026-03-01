@@ -14,11 +14,13 @@ import { CommentRows } from './components/CommentRows.js';
 import { ContextPanel } from './components/ContextPanel.js';
 import { StatusBar } from './components/StatusBar.js';
 import { HelpOverlay } from './components/HelpOverlay.js';
+import { TutorialOverlay, TUTORIAL_PAGE_COUNT } from './components/TutorialOverlay.js';
 import { buildTree, flattenTree, buildFileDiffs, buildUnifiedRows } from './data.js';
 import { getFileContext, getFolderContext, getRepoContext, getLineContext } from './context.js';
 import { exportMarkdown } from '../export/markdown-exporter.js';
 import { writeExport } from '../export/write-export.js';
 import type { ScanResult } from '../core/engine.js';
+import { rescore } from '../core/engine.js';
 import type { ContextData, DiffMode } from './types.js';
 
 interface AppProps {
@@ -29,8 +31,10 @@ interface AppProps {
 export function App({ data, rootDir }: AppProps) {
   const size = useTermSize();
 
-  const tree = useMemo(() => buildTree(data), [data]);
-  const diffs = useMemo(() => buildFileDiffs(data), [data]);
+  // Invalidation counter: force re-computation after rescore mutates data in-place
+  const [dataVersion, setDataVersion] = useState(0);
+  const tree = useMemo(() => buildTree(data), [data, dataVersion]);
+  const diffs = useMemo(() => buildFileDiffs(data), [data, dataVersion]);
   const fileToRepo = useMemo(() => {
     const map = new Map<string, string>();
     for (const repo of data.repos) {
@@ -50,13 +54,74 @@ export function App({ data, rootDir }: AppProps) {
   const [diffCursor, setDiffCursor] = useState(0);
   const [inputMode, setInputMode] = useState<InputMode | null>(null);
   const [diffMode, setDiffMode] = useState<DiffMode>('unified');
-  const { lineReviews, setLineFlag, setLineFlagBatch, addLineComment } = useReview(rootDir, data);
+  const { lineReviews, setLineFlag, setLineFlagBatch, addLineComment, stale, scoringOverride, resetReview } = useReview(rootDir, data);
   const { fileProgress, globalStats, sideEffectCount } = useReviewProgress(data, diffs, lineReviews);
   const history = useNavHistory();
   const [searchQuery, setSearchQuery] = useState<string | null>(null);
   const [exportMsg, setExportMsg] = useState<string | null>(null);
   const [batchMsg, setBatchMsg] = useState<string | null>(null);
   const [showHelp, setShowHelp] = useState(false);
+  const [showTutorial, setShowTutorial] = useState(false);
+  const [tutorialPage, setTutorialPage] = useState(0);
+  const [aiScoringActive, setAiScoringActive] = useState(false);
+  const [resetPrompt, setResetPrompt] = useState(false);
+
+  // Store original crits to restore when AI scoring is toggled off
+  const originalCrits = useRef<Map<string, { fileCrit: number; methods: Map<string, number> }> | null>(null);
+
+  const handleToggleAIScoring = useCallback(() => {
+    if (!scoringOverride && !aiScoringActive) {
+      setBatchMsg('No AI scoring found. Export with Alt+E, run AI scoring, then import.');
+      setTimeout(() => setBatchMsg(null), 3000);
+      return;
+    }
+
+    if (aiScoringActive) {
+      // Restore original crits
+      if (originalCrits.current) {
+        for (const r of data.repos) {
+          for (const file of r.files) {
+            const saved = originalCrits.current.get(file.id);
+            if (saved) {
+              file.crit = saved.fileCrit;
+              for (const m of [...file.methods, ...file.constants]) {
+                const mc = saved.methods.get(m.name);
+                if (mc !== undefined) m.crit = mc;
+              }
+            }
+          }
+        }
+        originalCrits.current = null;
+      }
+      setAiScoringActive(false);
+      setDataVersion(v => v + 1);
+      setBatchMsg('AI scoring deactivated');
+    } else if (scoringOverride) {
+      // Save original crits before rescore
+      const saved = new Map<string, { fileCrit: number; methods: Map<string, number> }>();
+      for (const r of data.repos) {
+        for (const file of r.files) {
+          const methods = new Map<string, number>();
+          for (const m of [...file.methods, ...file.constants]) methods.set(m.name, m.crit);
+          saved.set(file.id, { fileCrit: file.crit, methods });
+        }
+      }
+      originalCrits.current = saved;
+      rescore(data, scoringOverride);
+      setAiScoringActive(true);
+      setDataVersion(v => v + 1);
+      setBatchMsg(`AI scoring active: ${scoringOverride.rationale}`);
+    }
+    setTimeout(() => setBatchMsg(null), 3000);
+  }, [data, aiScoringActive, scoringOverride]);
+
+  const handleResetReview = useCallback((scope: 'review' | 'ai' | 'all') => {
+    resetReview(scope);
+    if (scope === 'ai' || scope === 'all') {
+      setAiScoringActive(false);
+      originalCrits.current = null;
+    }
+  }, [resetReview]);
 
   const handleExport = useCallback(() => {
     const exported = exportMarkdown(data, diffs, lineReviews);
@@ -232,8 +297,8 @@ export function App({ data, rootDir }: AppProps) {
 
   // Navigation — pass activeDiffRows so nav works on the correct array
   useNavigation(
-    { panel, treeIdx: safeIdx, selectedFile, diffScroll, diffCursor: safeDiffCursor, ctxIdx, minCrit, collapsed, inputMode, searchQuery, showHelp },
-    { setPanel, setTreeIdx, setSelectedFile, setDiffScroll, setDiffCursor, setCtxIdx, setMinCrit, setLineFlag, setLineFlagBatch, setBatchMsg: handleBatchMsg, setCollapsed, setInputMode, setSearchQuery, setShowHelp, onExport: handleExport, onToggleDiffMode: handleToggleDiffMode, historyPush: history.push, historyGoBack: history.goBack, historyGoForward: history.goForward },
+    { panel, treeIdx: safeIdx, selectedFile, diffScroll, diffCursor: safeDiffCursor, ctxIdx, minCrit, collapsed, inputMode, searchQuery, showHelp, showTutorial, tutorialPage, resetPrompt },
+    { setPanel, setTreeIdx, setSelectedFile, setDiffScroll, setDiffCursor, setCtxIdx, setMinCrit, setLineFlag, setLineFlagBatch, setBatchMsg: handleBatchMsg, setCollapsed, setInputMode, setSearchQuery, setShowHelp, setShowTutorial, setTutorialPage, tutorialPageCount: TUTORIAL_PAGE_COUNT, setResetPrompt, onExport: handleExport, onToggleDiffMode: handleToggleDiffMode, onToggleAIScoring: handleToggleAIScoring, onResetReview: handleResetReview, historyPush: history.push, historyGoBack: history.goBack, historyGoForward: history.goForward },
     { flatTree, diffRows: activeDiffRows, diffs, ctx, bodyH, lineReviews, fileProgress },
   );
 
@@ -416,11 +481,12 @@ export function App({ data, rootDir }: AppProps) {
         </Border>
       </Box>
 
-      {/* Help overlay — rendered AFTER panels so it paints on top */}
+      {/* Overlays — rendered AFTER panels so they paint on top */}
       {showHelp && <HelpOverlay width={size.w} height={bodyH} />}
+      {showTutorial && <TutorialOverlay width={size.w} height={bodyH} page={tutorialPage} />}
 
       {/* Status bar */}
-      <StatusBar repoCount={data.repos.length} stats={globalStats} sideEffects={sideEffectCount} width={size.w} exportMsg={exportMsg} batchMsg={batchMsg} canGoBack={history.canGoBack} canGoForward={history.canGoForward} />
+      <StatusBar repoCount={data.repos.length} stats={globalStats} sideEffects={sideEffectCount} width={size.w} exportMsg={exportMsg} batchMsg={batchMsg} canGoBack={history.canGoBack} canGoForward={history.canGoForward} aiScoring={aiScoringActive} stale={stale} />
     </Box>
   );
 }

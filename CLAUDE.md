@@ -64,8 +64,8 @@ Ink ^5.1.0 (React for terminals). 3-panel layout: Explorer / Diff / Context.
 - **context.ts** — derives context panel data from current selection (file/folder/repo)
 - **colors.ts** — palette + `critColor()` + `TYPE_ICON` map
 - **types.ts** — TUI-specific types (TreeItem, FlatItem, DiffRow, TuiDiffLine, ContextData)
-- **components/** — Border, TreeRow, DLine (side-by-side diff line), ContextPanel
-- **hooks/** — useTermSize (responsive resize), useNavigation (keyboard input)
+- **components/** — Border, TreeRow, DLine, ContextPanel, HelpOverlay, TutorialOverlay
+- **hooks/** — useTermSize, useNavigation, useReview, useInputMode, useReviewProgress, useNavHistory
 
 ### Shared Types
 
@@ -73,23 +73,40 @@ Ink ^5.1.0 (React for terminals). 3-panel layout: Explorer / Diff / Context.
 - Config: `RevuConfig`, `ScoringConfig`, `ScoringWeights`, `LineCritMultipliers`, `SecurityKeywords`
 - Engine output: `FileEntry`, `RepoEntry`, `ScanResult` (from engine.ts)
 - Pipeline: `DetectedLink`, `ParsedFile`, `MethodData`
-- Review: `ReviewData`, `FileReview`, `MethodReview`
+- Review: `ReviewData`, `FileReview`, `MethodReview`, `ScoringOverride`
 
 ## Key Conventions
 
 - File extensions determine classification: `.service.ts`, `.controller.ts`, `.dto.ts`, `.guard.ts`, `.module.ts`, `.resolver.ts`, `.middleware.ts`, `.filter.ts`, `.strategy.ts`, etc.
 - Links between files are typed: `import`, `inject`, `type` (more link types planned)
 - Criticality is a 0–10 float driven by project config
-- Review flags: `ok`, `bug`, `test`, `question`
+- Review flags: `ok`, `bug`, `question`
 - Method status: `new`, `mod`, `unch`, `del`
 - Diff lines encoded as `{ t: 'a'|'d'|'c', c: string }` (add/delete/context)
 - `fileCritMap` is keyed by file **path** (not generated ID) to ensure correct riskCrit on links
+
+## Key Shortcuts
+
+- `t` — Tutorial overlay (paginated guided tour)
+- `h` — Keyboard shortcuts reference
+- `c/x/?` — Flag as ok/bug/question (line, hunk, file, or folder scope)
+- `n` — Add comment (diff) or next unreviewed file (explorer)
+- `Alt+E` — Export AI-ready markdown
+- `Alt+A` — Toggle AI scoring override
+- `Alt+R` — Reset review (r=flags, a=AI, A=all)
+- `[/]` — Adjust minimum criticality filter
+
+## Review Persistence
+
+- Reviews stored in `.revu/reviews/{repo}_{branch}.json`
+- ReviewData v3 with `headSha` for staleness detection
+- `ScoringOverride` stored inside ReviewData (not separate file)
+- Branch-scoped: different branches are fully independent
+- `saveReviews` preserves `createdAt` and `scoringOverride` across saves
 
 ## Environment
 
 - CLI entry: `src/cli.ts` — takes optional root directory + base branch arguments
 - Product spec v2: `v2/revu-brief-tui-v2.md`
 - POC reference: `v2/POC/revu-tui/`
-
-# currentDate
-Today's date is 2026-02-28.
+- Export: `src/export/markdown-exporter.ts` — AI-ready markdown with findings table
