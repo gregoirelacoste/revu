@@ -1,6 +1,6 @@
 // ── Content-aware scoring signals — pure functions ──
 
-import type { MethodData, DetectedLink, LineCritMultipliers, ScoringConfig } from '../types.js';
+import type { MethodData, DetectedLink, LineCritMultipliers, ScoringConfig, LineCategoryCount } from '../types.js';
 
 interface FileRef { path: string; type: string; methods: MethodData[] }
 
@@ -29,28 +29,57 @@ const LINE_PATTERNS: Array<{ re: RegExp; category: keyof LineCritMultipliers }> 
   { re: /^\s*$/, category: 'whitespace' },
 ];
 
-/** Classify a single line → multiplier weight from config. */
-export function classifyLine(content: string, multipliers: LineCritMultipliers): number {
+/** Classify a single line → category name (first match wins). */
+export function classifyLineCategory(content: string): keyof LineCritMultipliers {
   const trimmed = content.trimStart();
-  // Fast-path: comments are comments, even if they mention security keywords
   if (trimmed.startsWith('//') || trimmed.startsWith('/*') || trimmed.startsWith('*') || trimmed.startsWith('*/')) {
-    return multipliers.comment;
+    return 'comment';
   }
-  if (trimmed === '') return multipliers.whitespace;
+  if (trimmed === '') return 'whitespace';
   for (const { re, category } of LINE_PATTERNS) {
-    if (re.test(content)) return multipliers[category];
+    if (re.test(content)) return category;
   }
-  return multipliers.assignment; // default fallback
+  return 'assignment';
 }
 
-/** Top-heavy changeCrit: content of the diff dictates the base score (0-10). */
-export function computeChangeCrit(methods: MethodData[], config: ScoringConfig): number {
+/** Classify a single line → multiplier weight from config. */
+export function classifyLine(content: string, multipliers: LineCritMultipliers): number {
+  return multipliers[classifyLineCategory(content)];
+}
+
+// ── Detailed changeCrit with breakdown ──
+
+export interface ChangeCritDetail {
+  score: number;
+  topKMean: number;
+  fullMean: number;
+  lineCount: number;
+  lineCategories: LineCategoryCount;
+}
+
+function emptyCategories(): LineCategoryCount {
+  return {
+    security: 0, signature: 0, errorHandling: 0, database: 0,
+    controlFlow: 0, injection: 0, async: 0, dataTransform: 0,
+    returnLogic: 0, assignment: 0, declaration: 0, typeDecl: 0,
+    logging: 0, import: 0, comment: 0, whitespace: 0,
+  };
+}
+
+/** Top-heavy changeCrit with full breakdown. */
+export function computeChangeCritDetailed(methods: MethodData[], config: ScoringConfig): ChangeCritDetail {
   const weights: number[] = [];
+  const categories = emptyCategories();
+  let lineCount = 0;
+
   for (const m of methods) {
     const diffLines = m.diff.filter(d => d.t !== 'c');
     for (let i = 0; i < diffLines.length; i++) {
-      let w = classifyLine(diffLines[i].c, config.lineCriticality);
-      // Semantic pair bonus: adjacent del+add with weight > 0.5 → ×1.3
+      const cat = classifyLineCategory(diffLines[i].c);
+      categories[cat]++;
+      lineCount++;
+
+      let w = config.lineCriticality[cat];
       if (i > 0 && diffLines[i].t !== diffLines[i - 1].t) {
         const prevW = classifyLine(diffLines[i - 1].c, config.lineCriticality);
         if (w > 0.5 && prevW > 0.5) w = Math.max(w, prevW) * 1.3;
@@ -58,12 +87,21 @@ export function computeChangeCrit(methods: MethodData[], config: ScoringConfig):
       weights.push(w);
     }
   }
-  if (weights.length === 0) return 0;
+
+  if (weights.length === 0) return { score: 0, topKMean: 0, fullMean: 0, lineCount: 0, lineCategories: categories };
+
   weights.sort((a, b) => b - a);
   const topK = Math.max(1, Math.ceil(weights.length * 0.2));
-  const topMean = weights.slice(0, topK).reduce((a, b) => a + b, 0) / topK;
+  const topKMean = weights.slice(0, topK).reduce((a, b) => a + b, 0) / topK;
   const fullMean = weights.reduce((a, b) => a + b, 0) / weights.length;
-  return Math.min(10, (topMean * 0.6 + fullMean * 0.4) * 4);
+  const score = Math.min(10, (topKMean * 0.6 + fullMean * 0.4) * 4);
+
+  return { score, topKMean, fullMean, lineCount, lineCategories: categories };
+}
+
+/** Top-heavy changeCrit: content of the diff dictates the base score (0-10). */
+export function computeChangeCrit(methods: MethodData[], config: ScoringConfig): number {
+  return computeChangeCritDetailed(methods, config).score;
 }
 
 /** Legacy computeContentRisk — kept for method-level scoring. */

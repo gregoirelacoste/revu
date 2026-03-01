@@ -1,8 +1,8 @@
-import type { ScoringConfig, MethodData, DetectedLink } from '../types.js';
+import type { ScoringConfig, MethodData, DetectedLink, FileScoringBreakdown } from '../types.js';
 import type { GraphSignals } from './graph-signals.js';
 import { computeGraphAmplifier } from './graph-signals.js';
 import {
-  computeChangeCrit, computeContentRisk,
+  computeChangeCrit, computeChangeCritDetailed, computeContentRisk,
   computeCompoundSigDep, computeChangePropagation, computeCascadeDepth,
   computeDtoContractChange, computeExistingEndpointMod,
   computeFormattingDiscount, computeTestDiscount,
@@ -52,31 +52,45 @@ export function computeFileCriticality(
 
 // ── V3 scorer: changeCrit × graphAmplifier × (1 + compoundBonus) × attenuations ──
 
-export function computeFileCriticalityV2(config: ScoringConfig, s: FileSignals): number {
-  const allMethods = [...s.methods, ...s.constants];
+export function computeFileBreakdown(config: ScoringConfig, s: FileSignals): FileScoringBreakdown {
+  const allMeth = [...s.methods, ...s.constants];
 
-  // 1. Intrinsic change criticality (0-10)
-  const changeCrit = computeChangeCrit(allMethods, config);
-
-  // 2. Graph amplifier (0.5-2.0)
-  const graphAmp = computeGraphAmplifier(
+  const detail = computeChangeCritDetailed(allMeth, config);
+  const graphAmplifier = computeGraphAmplifier(
     s.graph, config, s.fileType, s.filePath, computeSecurityWeight,
   );
 
-  // 3. Compound bonuses
-  const compoundBonus =
-    computeCompoundSigDep(s.methods, s.dependencyCount) +
-    computeChangePropagation(s.filePath, s.allFiles, s.links) +
-    computeCascadeDepth(s.filePath, s.allFiles, s.links) +
-    computeDtoContractChange(s.fileType, s.methods, s.constants) +
-    computeExistingEndpointMod(s.fileType, s.methods);
+  const sigDep = computeCompoundSigDep(s.methods, s.dependencyCount);
+  const propagation = computeChangePropagation(s.filePath, s.allFiles, s.links);
+  const cascadeDepth = computeCascadeDepth(s.filePath, s.allFiles, s.links);
+  const dtoContract = computeDtoContractChange(s.fileType, s.methods, s.constants);
+  const endpointMod = computeExistingEndpointMod(s.fileType, s.methods);
+  const compoundBonus = sigDep + propagation + cascadeDepth + dtoContract + endpointMod;
 
-  // 4. Attenuations
   const fmtDiscount = computeFormattingDiscount(s.methods, s.constants);
   const testDiscount = computeTestDiscount(s.tested);
 
-  const raw = changeCrit * graphAmp * (1 + compoundBonus) * fmtDiscount * testDiscount;
-  return Math.round(Math.min(10, Math.max(0, raw)) * 10) / 10;
+  const raw = detail.score * graphAmplifier * (1 + compoundBonus) * fmtDiscount * testDiscount;
+  const finalScore = Math.round(Math.min(10, Math.max(0, raw)) * 10) / 10;
+
+  return {
+    changeCrit: detail.score,
+    graphAmplifier,
+    compoundBonus,
+    compoundDetail: { sigDep, propagation, cascadeDepth, dtoContract, endpointMod },
+    fmtDiscount,
+    testDiscount,
+    finalScore,
+    lineCount: detail.lineCount,
+    lineCategories: detail.lineCategories,
+    topKMean: detail.topKMean,
+    fullMean: detail.fullMean,
+    graphSignals: s.graph ? { ...s.graph } : undefined,
+  };
+}
+
+export function computeFileCriticalityV2(config: ScoringConfig, s: FileSignals): number {
+  return computeFileBreakdown(config, s).finalScore;
 }
 
 // ── Method scorer (v2: 7 factors) ──

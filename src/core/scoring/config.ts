@@ -1,6 +1,11 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { join, dirname } from 'node:path';
 import type { RevuConfig, ScoringConfig } from '../types.js';
+
+export function hashConfig(scoring: ScoringConfig): string {
+  return createHash('sha256').update(JSON.stringify(scoring)).digest('hex').slice(0, 8);
+}
 
 const DEFAULT_SCORING: ScoringConfig = {
   weights: {

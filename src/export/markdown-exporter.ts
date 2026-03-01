@@ -1,7 +1,7 @@
 // ── Export review results as Markdown (AI-ready format) ──
 
 import type { ScanResult, RepoEntry, FileEntry } from '../core/engine.js';
-import type { MethodData, RevuConfig } from '../core/types.js';
+import type { MethodData, RevuConfig, ScoringContext, FileScoringBreakdown } from '../core/types.js';
 import type { TuiFileDiff, ReviewStats } from '../tui/types.js';
 import type { LineReview } from '../tui/hooks/useReview.js';
 import { allMethods } from '../core/analyzer/side-effects.js';
@@ -35,10 +35,10 @@ function methodLabel(m: MethodData): string {
 
 function renderHeader(
   repo: RepoEntry, globalStats: ReviewStats, config: RevuConfig,
+  scoringCtx?: ScoringContext,
 ): string {
   const now = new Date().toISOString();
   const pct = globalStats.total > 0 ? Math.round((globalStats.reviewed / globalStats.total) * 100) : 0;
-  const w = config.scoring.weights;
 
   const lines = [
     `# Code Review \u2014 ${repo.name}`,
@@ -50,8 +50,28 @@ function renderHeader(
     `- **Files changed**: ${repo.files.length}`,
     `- **Review progress**: ${globalStats.reviewed}/${globalStats.total} lines (${pct}%)`,
     `- **Findings**: ${globalStats.bugs} bugs, ${globalStats.questions} questions, ${globalStats.comments} comments`,
-    `- **Scoring weights**: fileType=${w.fileType}, changeVolume=${w.changeVolume}, dependencies=${w.dependencies}, securityContext=${w.securityContext}`,
   ];
+
+  if (scoringCtx) {
+    lines.push(
+      '',
+      `## Scoring (${scoringCtx.scorerVersion} \u2014 config ${scoringCtx.configHash})`,
+      '',
+      '**Formula**: `changeCrit \u00D7 graphAmplifier \u00D7 (1 + compoundBonus) \u00D7 attenuations`',
+      '',
+      '| Factor | Description | Range |',
+      '|--------|-------------|-------|',
+      '| changeCrit | Content analysis of changed lines (top-heavy mean) | 0-10 |',
+      '| graphAmplifier | Structural importance from dependency graph | 0.5-2.0 |',
+      '| compoundBonus | Signature+deps, propagation, cascade, DTO, endpoints | 0-0.7 |',
+      '| fmtDiscount | Formatting-only attenuation | 0.1-1.0 |',
+      '| testDiscount | Spec file present \u2192 0.85 | 0.85-1.0 |',
+    );
+  } else {
+    const w = config.scoring.weights;
+    lines.push(`- **Scoring weights**: fileType=${w.fileType}, changeVolume=${w.changeVolume}, dependencies=${w.dependencies}, securityContext=${w.securityContext}`);
+  }
+
   return lines.join('\n');
 }
 
@@ -177,9 +197,29 @@ function renderMethod(
 
 // ── File rendering ──
 
+function renderBreakdownLine(b: FileScoringBreakdown): string {
+  const parts: string[] = [];
+  parts.push(`> **Score**: ${b.changeCrit.toFixed(1)} \u00D7 ${b.graphAmplifier.toFixed(2)} \u00D7 (1+${b.compoundBonus.toFixed(2)}) \u00D7 ${b.fmtDiscount.toFixed(1)} \u00D7 ${b.testDiscount.toFixed(2)} = **${b.finalScore.toFixed(1)}**`);
+
+  const cats = Object.entries(b.lineCategories)
+    .filter(([, v]) => v > 0)
+    .sort(([, a], [, b]) => b - a)
+    .map(([k, v]) => `${v} ${k}`)
+    .join(', ');
+  parts.push(`> **Lines**: ${b.lineCount} changed \u2014 ${cats}`);
+
+  if (b.graphSignals) {
+    const g = b.graphSignals;
+    parts.push(`> **Graph**: importance=${g.graphImportance.toFixed(2)}, callerCrit=${g.callerCritWeight.toFixed(2)}, entryProx=${g.entryProximity.toFixed(2)}, exclusivity=${g.exclusivity.toFixed(2)}`);
+  }
+
+  return parts.join('\n');
+}
+
 function renderFile(
   file: FileEntry, diffs: Map<string, TuiFileDiff>,
   lineReviews: Map<string, LineReview>,
+  scoringCtx?: ScoringContext,
 ): string {
   const lines: string[] = [];
   const diff = diffs.get(file.id);
@@ -189,6 +229,11 @@ function renderFile(
   const emoji = hasSideEffect ? '\u26A1' : critEmoji(file.crit);
 
   lines.push(`### ${emoji} ${file.name}${file.ext} (${file.crit.toFixed(1)}) \u2014 ${hasSideEffect ? 'side-effect, ' : ''}${status}`);
+
+  const breakdown = scoringCtx?.files[file.path];
+  if (breakdown) {
+    lines.push(renderBreakdownLine(breakdown));
+  }
 
   if (hasSideEffect && status === 'unreviewed') {
     const impactedMethods = allMethods(file).filter(m => m.impacted);
@@ -243,6 +288,7 @@ function renderSideEffects(repo: RepoEntry): string {
 
 function renderAISection(
   repo: RepoEntry, diffs: Map<string, TuiFileDiff>, lineReviews: Map<string, LineReview>,
+  scoringCtx?: ScoringContext,
 ): string {
   const lines = [
     '',
@@ -254,6 +300,10 @@ function renderAISection(
     '3. **Missed Issues** \u2014 Identify critical issues in unreviewed files',
     '4. **Propose Fixes** \u2014 For confirmed bugs, propose minimal fixes',
   ];
+
+  if (scoringCtx) {
+    lines.push(`5. **Challenge Scoring** \u2014 For each file, compare the automated score with your assessment. Score formula version: ${scoringCtx.scorerVersion} (config hash: ${scoringCtx.configHash}). If you disagree with a score, explain what the scorer missed or over-weighted.`);
+  }
 
   // List unreviewed high-crit files
   const unreviewed: Array<{ name: string; crit: number }> = [];
@@ -282,12 +332,13 @@ function renderAISection(
 function renderRepo(
   repo: RepoEntry, diffs: Map<string, TuiFileDiff>,
   lineReviews: Map<string, LineReview>, config: RevuConfig,
+  scoringCtx?: ScoringContext,
 ): string {
   const parts: string[] = [];
   const globalStats = computeGlobalReviewStats(diffs, lineReviews);
 
   // Header
-  parts.push(renderHeader(repo, globalStats, config));
+  parts.push(renderHeader(repo, globalStats, config, scoringCtx));
 
   // Findings table
   const findings = collectFindings(repo, diffs, lineReviews);
@@ -302,7 +353,7 @@ function renderRepo(
     const hasDiff = allMethods(file).some(m => m.status !== 'unch');
     const hasSideEffect = allMethods(file).some(m => m.impacted);
     if (!hasDiff && !hasSideEffect) continue;
-    parts.push('', renderFile(file, diffs, lineReviews), '', '---');
+    parts.push('', renderFile(file, diffs, lineReviews, scoringCtx), '', '---');
   }
 
   // Side-effects
@@ -310,7 +361,7 @@ function renderRepo(
   if (sideEffects) parts.push(sideEffects);
 
   // AI Review Request
-  parts.push(renderAISection(repo, diffs, lineReviews));
+  parts.push(renderAISection(repo, diffs, lineReviews, scoringCtx));
 
   return parts.join('\n');
 }
@@ -322,7 +373,7 @@ export function exportMarkdown(
 ): Map<string, { markdown: string; branch: string }> {
   const output = new Map<string, { markdown: string; branch: string }>();
   for (const repo of result.repos) {
-    const md = renderRepo(repo, diffs, lineReviews, result.config);
+    const md = renderRepo(repo, diffs, lineReviews, result.config, result.scoringContext);
     output.set(repo.name, { markdown: md, branch: repo.branch });
   }
   return output;

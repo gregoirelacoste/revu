@@ -12,14 +12,15 @@ import { computeGraphSignals } from './scoring/graph-signals.js';
 import {
   computeFileCriticality, computeMethodCriticality,
   computeFileCriticalityV2, computeMethodCriticalityV2,
+  computeFileBreakdown,
   type FileSignals,
 } from './scoring/criticality.js';
-import { loadConfig } from './scoring/config.js';
+import { loadConfig, hashConfig } from './scoring/config.js';
 import { buildMethodData, buildConstantData, buildUncoveredDiff } from './analyzer/diff-extractor.js';
 import { detectSideEffects } from './analyzer/side-effects.js';
 import type {
   ParsedFile, FileDiff, MethodData,
-  DetectedLink, RepoInfo, RevuConfig, ScoringConfig, ScoringOverride,
+  DetectedLink, RepoInfo, RevuConfig, ScoringConfig, ScoringOverride, ScoringContext,
 } from './types.js';
 
 // ── Result types ──
@@ -52,6 +53,7 @@ export interface ScanResult {
   links: DetectedLink[];
   allFiles: ParsedFile[];
   config: RevuConfig;
+  scoringContext?: ScoringContext;
 }
 
 // ── Main orchestrator ──
@@ -85,14 +87,14 @@ export async function scan(rootDir: string, baseBranch = 'develop', includeWorki
   const links = detectLinks(allParsedFiles, fileCritMap);
 
   // Enrich files with real dependency counts + graph signals, then recompute criticality
-  enrichWithDependencies(repoEntries, links, config.scoring, repoGraphs);
+  const scoringContext = enrichWithDependencies(repoEntries, links, config.scoring, repoGraphs);
 
   // Mark methods impacted by signature changes in their dependencies
   if (config.rules.sideEffectDetection) {
     detectSideEffects(repoEntries, links);
   }
 
-  return { repos: repoEntries, links, allFiles: allParsedFiles, config };
+  return { repos: repoEntries, links, allFiles: allParsedFiles, config, scoringContext };
 }
 
 // ── Per-repo processing ──
@@ -207,7 +209,7 @@ function buildFileCritMap(repos: RepoEntry[]): Map<string, number> {
 function enrichWithDependencies(
   repos: RepoEntry[], links: DetectedLink[], scoring: ScoringConfig,
   repoGraphs: Map<string, RepoGraph>,
-): void {
+): ScoringContext {
   // Count how many files depend on each file (inbound links from diff)
   const depCount = new Map<string, number>();
   for (const link of links) {
@@ -231,12 +233,13 @@ function enrichWithDependencies(
     }
   }
 
+  const scoringFiles: ScoringContext['files'] = {};
+
   // First pass: set method usages + recompute file crit with graph signals
   for (const repo of repos) {
     const graph = repoGraphs.get(repo.name);
 
     for (const file of repo.files) {
-      // Set method usages before file scoring (methodRisk uses usages)
       for (const m of file.methods) {
         const key = `${file.path}:${m.name}`;
         m.usages = methodUsages.get(key) ?? 1;
@@ -256,7 +259,9 @@ function enrichWithDependencies(
         links,
         graph: graph ? computeGraphSignals(file.path, graph, scoring) : undefined,
       };
-      file.crit = computeFileCriticalityV2(scoring, signals);
+      const breakdown = computeFileBreakdown(scoring, signals);
+      file.crit = breakdown.finalScore;
+      scoringFiles[file.path] = breakdown;
     }
   }
 
@@ -270,6 +275,13 @@ function enrichWithDependencies(
       }
     }
   }
+
+  return {
+    scorerVersion: 'v3.1',
+    configHash: hashConfig(scoring),
+    generatedAt: new Date().toISOString(),
+    files: scoringFiles,
+  };
 }
 
 // ── Rescore with AI overrides — mutates in place, caller must force re-render ──

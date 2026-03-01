@@ -202,6 +202,7 @@ export interface ReviewData {
   updatedAt: string;
   files: Record<string, FileReview>;
   scoringOverride?: ScoringOverride;
+  scoringContext?: ScoringContext;
 }
 
 export interface ScoringOverride {
@@ -212,4 +213,53 @@ export interface ScoringOverride {
   rationale: string;
   categoryOverrides?: Record<string, { weight: number; reason: string }>;
   fileOverrides?: Record<string, { weight: number; reason: string }>;
+}
+
+// ── Scoring breakdown (persisted in ReviewData) ──
+
+export interface LineCategoryCount {
+  security: number;
+  signature: number;
+  errorHandling: number;
+  database: number;
+  controlFlow: number;
+  injection: number;
+  async: number;
+  dataTransform: number;
+  returnLogic: number;
+  assignment: number;
+  declaration: number;
+  typeDecl: number;
+  logging: number;
+  import: number;
+  comment: number;
+  whitespace: number;
+}
+
+export interface FileScoringBreakdown {
+  changeCrit: number;
+  graphAmplifier: number;
+  compoundBonus: number;
+  compoundDetail: {
+    sigDep: number;
+    propagation: number;
+    cascadeDepth: number;
+    dtoContract: number;
+    endpointMod: number;
+  };
+  fmtDiscount: number;
+  testDiscount: number;
+  finalScore: number;
+  lineCount: number;
+  lineCategories: LineCategoryCount;
+  topKMean: number;
+  fullMean: number;
+  graphSignals?: { graphImportance: number; callerCritWeight: number; entryProximity: number; exclusivity: number };
+}
+
+export interface ScoringContext {
+  scorerVersion: string;
+  configHash: string;
+  generatedAt: string;
+  files: Record<string, FileScoringBreakdown>;
 }

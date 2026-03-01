@@ -196,7 +196,7 @@ async function saveReviews(
     const now = new Date().toISOString();
 
     const review: ReviewData = {
-      version: 3,
+      version: 4,
       repo: repo.name,
       branch: repo.branch,
       baseBranch: repo.baseBranch,
@@ -209,6 +209,11 @@ async function saveReviews(
     // Preserve scoringOverride from existing review
     if (existing?.scoringOverride) {
       review.scoringOverride = existing.scoringOverride;
+    }
+
+    // Persist current scoringContext from scan
+    if (data.scoringContext) {
+      review.scoringContext = data.scoringContext;
     }
 
     let hasData = false;
@@ -233,7 +238,7 @@ async function saveReviews(
       }
     }
 
-    if (hasData) {
+    if (hasData || review.scoringContext) {
       await store.save(repo.name, repo.branch, review).catch(err => {
         process.stderr.write(`[REVU] Save failed: ${err}\n`);
       });
