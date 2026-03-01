@@ -79,24 +79,24 @@ export function ContextPanel({ ctx, ctxIdx, isActive, width, minCrit, diffs, fil
       </Text>
       {filtered.map((chunk, i) => {
         const isFoc = isActive && i === ctxIdx;
+        const isMatch = !isActive && i === ctxIdx;
         const progress = chunkProgress(chunk, diffs, lineReviews);
+        const labelTag = ` (${chunk.label})`;
+        const maxW = Math.max(5, width - 10 - labelTag.length);
+        const truncMethod = chunk.method.length > maxW
+          ? chunk.method.slice(0, maxW - 1) + '\u2026'
+          : chunk.method;
         return (
-          <Box key={i} flexDirection="column">
-            <Box>
-              <Text color={isFoc ? C.accent : C.dim}>{isFoc ? '\u25B6' : ' '}</Text>
-              <Text color={critColor(chunk.crit)} bold>{chunk.crit.toFixed(1)}</Text>
-              <Text> </Text>
-              <Text color={progress === 'complete' ? C.dim : isFoc ? C.white : C.bright} bold={isFoc}>
-                {chunk.method.length > width - 12
-                  ? chunk.method.slice(0, width - 13) + '\u2026'
-                  : chunk.method}
-              </Text>
-              {progress === 'complete' && <Text color={C.green}>{' \u2713'}</Text>}
-              {progress === 'partial' && <Text color={C.orange}>{' \u25D0'}</Text>}
-            </Box>
-            <Text color={C.dim}>{'   '}{chunk.label.length > width - 8
-              ? chunk.label.slice(0, width - 9) + '\u2026'
-              : chunk.label}</Text>
+          <Box key={i}>
+            <Text color={isFoc ? C.accent : isMatch ? C.cyan : C.dim}>{isFoc ? '\u25B6' : isMatch ? '\u203A' : ' '}</Text>
+            <Text color={critColor(chunk.crit)} bold>{chunk.crit.toFixed(1)}</Text>
+            <Text> </Text>
+            <Text color={progress === 'complete' ? C.dim : isFoc ? C.white : isMatch ? C.bright : C.text} bold={isFoc}>
+              {truncMethod}
+            </Text>
+            <Text color={C.dim}>{labelTag}</Text>
+            {progress === 'complete' && <Text color={C.green}>{' \u2713'}</Text>}
+            {progress === 'partial' && <Text color={C.orange}>{' \u25D0'}</Text>}
           </Box>
         );
       })}

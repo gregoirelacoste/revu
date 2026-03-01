@@ -16,7 +16,7 @@ import { StatusBar } from './components/StatusBar.js';
 import { HelpOverlay } from './components/HelpOverlay.js';
 import { TutorialOverlay, TUTORIAL_PAGE_COUNT } from './components/TutorialOverlay.js';
 import { buildTree, flattenTree, buildFileDiffs, buildUnifiedRows } from './data.js';
-import { getFileContext, getFolderContext, getRepoContext, getLineContext } from './context.js';
+import { getFileContext, getFolderContext, getRepoContext } from './context.js';
 import { exportMarkdown } from '../export/markdown-exporter.js';
 import { writeExport } from '../export/write-export.js';
 import type { ScanResult } from '../core/engine.js';
@@ -270,27 +270,26 @@ export function App({ data, rootDir }: AppProps) {
   }, [safeDiffCursor, diffCursor, activeDiffRows.length]);
 
   const ctx = useMemo((): ContextData | null => {
-    // Mode 4: line-level context when diff panel active
-    if (panel === 1 && activeFile && currentDiff) {
-      const curRow = activeDiffRows[safeDiffCursor];
-      if (curRow?.type === 'diffRow') {
-        const line = curRow.reviewLine ?? curRow.baseLine;
-        if (line) {
-          const lineCtx = getLineContext(currentDiff.path, line.c, data, diffs);
-          if (lineCtx) return lineCtx;
-        }
-      }
+    if (panel === 1 && activeFile) {
       return getFileContext(activeFile, data, diffs, lineReviews);
     }
-
-    // Mode 3: explorer-driven
     const item = flatTree[safeIdx];
     if (!item) return null;
     if (item.node.id && diffs.has(item.node.id)) return getFileContext(item.node.id, data, diffs, lineReviews);
     if (item.node.type === 'repo') return getRepoContext(item.node.name, data, diffs, lineReviews);
     if (item.isFolder) return getFolderContext(item.node.name, data, diffs, lineReviews);
     return null;
-  }, [safeIdx, flatTree, data, diffs, lineReviews, panel, activeFile, currentDiff, activeDiffRows, safeDiffCursor]);
+  }, [safeIdx, flatTree, data, diffs, lineReviews, panel, activeFile]);
+
+  // Auto-sync ctxIdx with current method when diff panel is active
+  useEffect(() => {
+    if (panel !== 1 || !ctx) return;
+    const curRow = activeDiffRows[safeDiffCursor];
+    if (!curRow) return;
+    const filtered = ctx.chunks.filter(c => c.crit >= minCrit);
+    const idx = filtered.findIndex(c => c.method === curRow.method);
+    if (idx >= 0) setCtxIdx(idx);
+  }, [panel, safeDiffCursor, activeDiffRows, ctx, minCrit]);
 
   const branches = data.repos.map(r => r.branch).filter(b => b !== 'develop' && b !== 'main');
   const branchLabel = branches[0] ?? 'HEAD';

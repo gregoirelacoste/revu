@@ -306,8 +306,31 @@ function handleContextPanel(
   const navUsedBy = (ctx.usedBy ?? []).filter(u => u.fileId && diffs.has(u.fileId!));
   const totalItems = filtered.length + allImports.length + navUsedBy.length;
 
-  if (key.upArrow) { setCtxIdx(i => Math.max(0, i - 1)); return true; }
-  if (key.downArrow) { setCtxIdx(i => Math.min(Math.max(0, totalItems - 1), i + 1)); return true; }
+  if (key.upArrow || key.downArrow) {
+    const newIdx = key.upArrow
+      ? Math.max(0, ctxIdx - 1)
+      : Math.min(Math.max(0, totalItems - 1), ctxIdx + 1);
+    setCtxIdx(() => newIdx);
+    // Auto-scroll diff to follow context selection
+    if (newIdx < filtered.length && state.selectedFile) {
+      const chunk = filtered[newIdx];
+      if (chunk?.fileId === state.selectedFile) {
+        const targetIdx = context.diffRows.findIndex(
+          r => r.type === 'hunkHeader' && r.method === chunk.method,
+        );
+        if (targetIdx >= 0) {
+          const visibleH = Math.max(1, context.bodyH - 3);
+          setDiffCursor(() => targetIdx);
+          setDiffScroll(s => {
+            if (targetIdx < s) return targetIdx;
+            if (targetIdx >= s + visibleH) return targetIdx - visibleH + 1;
+            return s;
+          });
+        }
+      }
+    }
+    return true;
+  }
 
   // Flag method from CHANGES section
   if (input === 'c' || input === 'x' || input === '?') {
