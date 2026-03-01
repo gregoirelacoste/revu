@@ -1,16 +1,184 @@
-# Phase 12 — Scoring v2 : Statistique + IA
+# Phase 12 — Scoring v2 : Graph + Statistique + IA
 
 ## Contexte
 
 Le scoring actuel est trop simpliste : 4 signaux (type fichier, volume, dependances, path securite) avec des poids egaux. 14 signaux sont deja calcules dans le pipeline mais ignores par le scorer. Le resultat : un DTO reformate par Prettier score autant qu'un guard dont on modifie la logique d'auth.
 
-Deux axes d'amelioration :
+Probleme fondamental : le scoring est **path-based** (on regarde le nom du fichier) alors qu'il devrait etre **graph-based** (on regarde la position dans le reseau de dependances). Exemple : `image.analyzer.ts` score 3.1 alors qu'il est injecte dans `case-analysis.service.ts` qui est appele par un controller public — c'est un detecteur de fraude critique.
+
+Trois axes d'amelioration :
+- **Axe 0** : Scoring graph-based — source de verite, analyse du graphe complet d'imports/injections
 - **Axe 1** : Scoring statistique — exploiter les signaux deja presents dans le code
 - **Axe 2** : Scoring IA — methodologie pour enrichir le scoring via LLM
 
 ---
 
-## Axe 1 — Scoring Statistique
+## Axe 0 — Scoring Graph-Based (source de verite)
+
+### Probleme
+
+Le scoring repose sur des heuristiques locales (nom de fichier, volume de changement, keywords dans le path). Ca ne capture pas la **position reelle** d'un fichier dans l'architecture. Un `.analyzer.ts` avec 0 callers detectes score autant qu'un `.analyzer.ts` injecte dans le service central de detection de fraude, lui-meme appele par un controller public.
+
+### Principe
+
+Parser **tous les fichiers TS du repo** (pas seulement les modifies) pour construire le graphe complet d'imports et d'injections. Le score d'un fichier modifie depend de sa position dans ce graphe :
+
+- **Combien de fichiers l'importent** (pas juste les modifies — tous)
+- **Quel type de fichiers l'importent** (controller > service > util)
+- **A combien de hops est-il d'un point d'entree** (controller, resolver, main)
+- **Est-il critique dans sa chaine** (seul provider d'une fonctionnalite)
+
+### Architecture du graphe
+
+```
+Scan tous les .ts du repo (pas seulement le diff)
+     |
+     v
+ParsedFile[] complet (imports + injections + methods)
+     |
+     v
+Graphe oriente : noeud = fichier, arete = import/inject
+     |
+     v
+Pour chaque fichier MODIFIE, calculer :
+  - totalImporters     : nombre total de fichiers qui l'importent (direct)
+  - callerMaxCrit      : type de fichier le plus critique parmi les importeurs
+  - hopsToEntry        : distance min jusqu'a un controller/resolver
+  - exclusivity        : est-ce le seul provider de sa fonctionnalite pour un caller
+  - transitiveReach    : nombre de fichiers atteignables en suivant les imports sortants
+```
+
+### Signaux graph derives
+
+| Signal | Formule | Poids | Exemple |
+|---|---|---|---|
+| `graphImportance` | `min(1, totalImporters / 15)` | 0.25 | `ImageAnalyzer` importe par 3 modules → 0.20 |
+| `callerCritWeight` | max(callerFileType weights) | 0.20 | Importe par un `controller` (0.7) → 0.70 |
+| `entryProximity` | `1 / (1 + hopsToEntry)` | 0.20 | 2 hops du controller → 0.33 |
+| `exclusivity` | `1 / callerAlternatives` | 0.10 | Seul provider pour `case-analysis.service` → 1.0 |
+| `contentRisk` | (Axe 1, inchange) | 0.15 | Regex sur lignes modifiees |
+| `stability` | (Axe 1, inchange) | 0.10 | Ratio mod/add/del |
+
+**Les signaux path-based (`fileType`, `securityKeywords`) deviennent des bonus secondaires**, pas la source de verite.
+
+### Nouvelle hierarchie de scoring
+
+```
+score = graphScore × (1 + contentBonus + compoundBonus) × attenuations
+```
+
+Ou :
+- `graphScore` = position dans le graphe (signaux objectifs, 75% du score)
+- `contentBonus` = analyse du contenu des lignes modifiees (Axe 1)
+- `compoundBonus` = cascade, sigChanged × deps, etc. (Axe 1)
+- `attenuations` = formatting, test (Axe 1)
+
+### Exemple : `detectPhotoOfPhoto` avec graph-based
+
+```
+image.analyzer.ts (modifie)
+  totalImporters: 3 (case-analysis.module, comparison.module, item-analysis.module)
+  callerMaxCrit: case-analysis.service.ts → type=service (0.8)
+  hopsToEntry: 2 (analyzer → service → controller)
+  exclusivity: seul ImageAnalyzer pour le pattern PHOTO_OF_PHOTO
+
+graphImportance = min(1, 3/15)                  = 0.20 × 0.25 = 0.050
+callerCritWeight = 0.8                          = 0.80 × 0.20 = 0.160
+entryProximity = 1/(1+2)                        = 0.33 × 0.20 = 0.066
+exclusivity = 1.0                               = 1.00 × 0.10 = 0.100
+contentRisk = ~0.15 (if/return, filter logic)   = 0.15 × 0.15 = 0.023
+stability = ~0.5 (mix mod/add)                  = 0.50 × 0.10 = 0.050
+
+base = (0.050 + 0.160 + 0.066 + 0.100 + 0.023 + 0.050) × 10 = 4.49
+
++ compoundBonus (injecte dans service qui touche un controller) ≈ +0.10
+score ≈ 4.49 × 1.10 = 4.9
+
+Avec le bonus path "trust" si on ajoute "analyzer" aux keywords : ~5.5
+```
+
+Score passe de 3.1 a **~5.0-5.5** — bien plus representatif.
+
+### Implementation
+
+#### Step 0a — Full-repo AST scan (1h30)
+
+**Nouveau fichier `src/core/analyzer/repo-graph.ts`** (~100 lignes) :
+
+```typescript
+export interface RepoGraph {
+  nodes: Map<string, GraphNode>;      // path → node
+  edges: Map<string, GraphEdge[]>;    // path → outgoing edges
+  reverseEdges: Map<string, GraphEdge[]>; // path → incoming edges
+}
+
+interface GraphNode {
+  path: string;
+  fileType: string;
+  isEntry: boolean;     // controller, resolver, main
+  methods: string[];    // method names for exclusivity check
+}
+
+interface GraphEdge {
+  from: string;
+  to: string;
+  type: 'import' | 'inject';
+  specifiers: string[];
+}
+```
+
+Fonctions :
+- `buildRepoGraph(repoPath: string): Promise<RepoGraph>` — parcourt tous les `.ts` (hors `node_modules`, `.spec.ts`), parse les imports et injections avec le parser AST existant
+- Cache le resultat pour le live reload (ne re-parse que les fichiers modifies)
+
+**Perf estimee** : ~200-500 fichiers TS dans un monorepo Certificall, ~1-2s avec le parser actuel. Acceptable au premier scan, negligeable en live reload (delta seulement).
+
+#### Step 0b — Graph signals calculator (1h)
+
+**Nouveau fichier `src/core/scoring/graph-signals.ts`** (~80 lignes) :
+
+Fonctions pures :
+- `computeGraphImportance(path, graph)` — count reverse edges
+- `computeCallerCritWeight(path, graph, fileTypes)` — max fileType weight parmi les importeurs
+- `computeHopsToEntry(path, graph)` — BFS vers le controller/resolver le plus proche
+- `computeExclusivity(path, graph)` — pour chaque caller, combien d'alternatives importent le meme type
+
+#### Step 0c — Integration dans engine.ts (1h)
+
+- Appeler `buildRepoGraph()` au debut de `processRepo()`, avant le scoring
+- Passer le `RepoGraph` a `enrichWithDependencies`
+- Le graphe complet remplace le `depCount` actuel (qui ne comptait que les fichiers modifies)
+- `FileSignals` recoit les graph signals en plus des signaux existants
+
+#### Step 0d — Reequilibrer les poids (30 min)
+
+Dans `ScoringWeights`, remplacer la hierarchie actuelle :
+
+```typescript
+// Avant (path-based dominant)
+fileType: 0.20, changeVolume: 0.15, dependencies: 0.20, securityContext: 0.15,
+contentRisk: 0.15, methodRisk: 0.10, stability: 0.05
+
+// Apres (graph-based dominant)
+graphImportance: 0.25, callerCritWeight: 0.20, entryProximity: 0.20,
+exclusivity: 0.10, contentRisk: 0.15, stability: 0.10
+```
+
+Les anciens `fileType` et `securityContext` deviennent des bonus secondaires (compound bonus) au lieu de poids de base. Retrocompatible via `mergeConfig`.
+
+**Total Axe 0** : ~4h
+
+### Transition
+
+L'Axe 0 **remplace** les poids `fileType` et `dependencies` de l'Axe 1 comme source de verite. Les signaux de l'Axe 1 (`contentRisk`, `methodRisk`, `stability`, compound bonuses, attenuations) restent valides et complementaires. La formule finale sera :
+
+```
+score = graphBaseScore × (1 + contentBonus + compoundBonus) × attenuations
+```
+
+---
+
+## Axe 1 — Scoring Statistique ✅ (implemente 2025-03-01)
 
 ### Etat des lieux : signaux ignores
 
@@ -401,21 +569,26 @@ Raisons :
 
 ## Ordre d'implementation global
 
-| Step | Axe | Quoi | Effort |
-|---|---|---|---|
-| 1 | Stat | Types + config (3 nouveaux weights) | 30 min |
-| 2 | Stat | `content-signals.ts` (10 fonctions pures) | 2h |
-| 3 | Stat | Refactor `criticality.ts` → v2 | 1h |
-| 4 | Stat | Adapter `engine.ts` (passer allFiles + links) | 1h |
-| 5 | Stat | Verification + calibration manuelle | 30 min |
-| 6 | IA | `ai-scorer.ts` (prompt, appel API, fusion) | 2h |
-| 7 | IA | Config AI dans `.revu/config.json` | 30 min |
-| 8 | IA | Integration TUI (indicateur AI, rescore) | 1h |
-| 9 | IA | `training-extractor.ts` | 1h |
-| 10 | IA | `calibrator.ts` | 2h |
-| 11 | IA | RAG bug index + enrichissement prompt | 3h |
+| Step | Axe | Quoi | Effort | Statut |
+|---|---|---|---|---|
+| 0a | Graph | `repo-graph.ts` — full-repo AST scan | 1h30 | |
+| 0b | Graph | `graph-signals.ts` — 4 signaux graph | 1h | |
+| 0c | Graph | Integration engine.ts + FileSignals | 1h | |
+| 0d | Graph | Reequilibrer poids (graph dominant) | 30 min | |
+| 1 | Stat | Types + config (3 nouveaux weights) | 30 min | ✅ 2025-03-01 |
+| 2 | Stat | `content-signals.ts` (10 fonctions pures) | 2h | ✅ 2025-03-01 |
+| 3 | Stat | Refactor `criticality.ts` → v2 | 1h | ✅ 2025-03-01 |
+| 4 | Stat | Adapter `engine.ts` (passer allFiles + links) | 1h | ✅ 2025-03-01 |
+| 5 | Stat | Verification + calibration manuelle | 30 min | ✅ 2025-03-01 |
+| 6 | IA | `ai-scorer.ts` (prompt, appel API, fusion) | 2h | |
+| 7 | IA | Config AI dans `.revu/config.json` | 30 min | |
+| 8 | IA | Integration TUI (indicateur AI, rescore) | 1h | |
+| 9 | IA | `training-extractor.ts` | 1h | |
+| 10 | IA | `calibrator.ts` | 2h | |
+| 11 | IA | RAG bug index + enrichissement prompt | 3h | |
 
-**Total Axe 1** : ~5h
+**Total Axe 0** : ~4h (prochain a implementer)
+**Total Axe 1** : ~5h ✅
 **Total Axe 2** : ~9h30
 
 ---
@@ -424,11 +597,13 @@ Raisons :
 
 | Fichier | Changement |
 |---|---|
-| `src/core/types.ts` | 3 nouveaux champs dans `ScoringWeights` |
-| `src/core/scoring/config.ts` | Defaults reequilibres |
-| `src/core/scoring/content-signals.ts` | **Nouveau** — 10 fonctions pures |
-| `src/core/scoring/criticality.ts` | Formule v2 (3 couches) |
-| `src/core/engine.ts` | Passer allFiles + links a enrichWithDependencies |
+| `src/core/analyzer/repo-graph.ts` | **Nouveau** — full-repo AST scan, graphe complet |
+| `src/core/scoring/graph-signals.ts` | **Nouveau** — 4 signaux graph-based |
+| `src/core/types.ts` | GraphNode/GraphEdge types, nouveaux ScoringWeights |
+| `src/core/scoring/config.ts` | Defaults reequilibres (graph dominant) |
+| `src/core/scoring/content-signals.ts` | **Existant** — 10 fonctions pures (Axe 1) |
+| `src/core/scoring/criticality.ts` | Formule v3 (graph base + content/compound + attenuations) |
+| `src/core/engine.ts` | buildRepoGraph() + passer graph a enrichWithDependencies |
 | `src/core/scoring/ai-scorer.ts` | **Nouveau** — prompt, API, fusion |
 | `src/core/scoring/training-extractor.ts` | **Nouveau** — extraction tuples |
 | `src/core/scoring/calibrator.ts` | **Nouveau** — calibration poids |

@@ -96,6 +96,13 @@ Lancer : `npm run dev`
 
 > Plan detaille : `.claude/plans/phase12-scoring-v2.md`
 
+### Axe 0 — Scoring graph-based (source de verite)
+
+- [ ] repo-graph.ts : full-repo AST scan (tous les .ts, pas juste le diff)
+- [ ] graph-signals.ts : graphImportance, callerCritWeight, entryProximity, exclusivity
+- [ ] Integration engine.ts (buildRepoGraph + FileSignals)
+- [ ] Reequilibrer les poids (graph dominant, path-based en bonus secondaire)
+
 ### Axe 1 — Scoring statistique ✅ (2025-03-01)
 
 - [x] 3 nouveaux weights : contentRisk, methodRisk, stability
