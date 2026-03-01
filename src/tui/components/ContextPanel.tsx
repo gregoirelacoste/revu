@@ -61,6 +61,11 @@ export function ContextPanel({ ctx, ctxIdx, isActive, width, minCrit, diffs, fil
           : ctx.summary}
       </Text>
 
+      {/* Active method indicator */}
+      {ctx.activeMethod && (
+        <Text color={C.cyan} bold>{'\u25B8 '}{ctx.activeMethod}</Text>
+      )}
+
       {/* Review stats */}
       {stats && stats.total > 0 && (
         <Box>
@@ -105,7 +110,7 @@ export function ContextPanel({ ctx, ctxIdx, isActive, width, minCrit, diffs, fil
       {allImports.length > 0 && (
         <Box flexDirection="column" marginTop={1}>
           <Text color={C.dim}>{'\u2500'.repeat(Math.max(0, width - 4))}</Text>
-          <Text color={C.dim} bold>{' DEPENDS ON '}({allImports.length})</Text>
+          <Text color={C.dim} bold>{' DEPENDS ON '}({allImports.length}){ctx.activeMethod ? ' \u00B7 method' : ''}</Text>
           {allImports.map((imp, i) => {
             const navIdx = filtered.length + i;
             const isFoc = isActive && navIdx === ctxIdx;
@@ -136,7 +141,7 @@ export function ContextPanel({ ctx, ctxIdx, isActive, width, minCrit, diffs, fil
       {ctx.usedBy && ctx.usedBy.length > 0 && (
         <Box flexDirection="column" marginTop={1}>
           <Text color={C.dim}>{'\u2500'.repeat(Math.max(0, width - 4))}</Text>
-          <Text color={C.dim} bold>{' USED BY'}</Text>
+          <Text color={C.dim} bold>{' USED BY'}{ctx.activeMethod ? ' \u00B7 method' : ''}</Text>
           {ctx.usedBy.map((u, i) => {
             const navIdx = filtered.length + allImports.length + i;
             const isFoc = isActive && navIdx === ctxIdx;

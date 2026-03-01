@@ -19,7 +19,7 @@ import { HelpOverlay } from './components/HelpOverlay.js';
 import { TutorialOverlay, TUTORIAL_PAGE_COUNT } from './components/TutorialOverlay.js';
 import { ReviewMapOverlay } from './components/ReviewMapOverlay.js';
 import { buildTree, flattenTree, buildFileDiffs, buildUnifiedRows } from './data.js';
-import { getFileContext, getFolderContext, getRepoContext } from './context.js';
+import { getFileContext, getMethodContext, getFolderContext, getRepoContext } from './context.js';
 import { exportMarkdown } from '../export/markdown-exporter.js';
 import { writeExport } from '../export/write-export.js';
 import type { ScanResult } from '../core/engine.js';
@@ -309,8 +309,28 @@ export function App({ initialData, rootDir, rescan }: AppProps) {
     if (safeDiffCursor !== diffCursor && activeDiffRows.length > 0) setDiffCursor(safeDiffCursor);
   }, [safeDiffCursor, diffCursor, activeDiffRows.length]);
 
+  // Current method name: from diff cursor (panel 1) or from ctxIdx in CHANGES (panel 2)
+  const currentMethodName = useMemo(() => {
+    if (panel === 1) return activeDiffRows[safeDiffCursor]?.method ?? null;
+    if (panel === 2 && activeFile) {
+      // ctxIdx in CHANGES range → derive method name from file context chunks
+      const fileDiff = diffs.get(activeFile);
+      if (fileDiff) {
+        const fileCtx = getFileContext(activeFile, data, diffs, lineReviews);
+        if (fileCtx) {
+          const filtered = fileCtx.chunks.filter(c => c.crit >= minCrit);
+          if (ctxIdx < filtered.length) return filtered[ctxIdx].method;
+        }
+      }
+    }
+    return null;
+  }, [panel, safeDiffCursor, activeDiffRows, activeFile, diffs, data, lineReviews, ctxIdx, minCrit]);
+
   const ctx = useMemo((): ContextData | null => {
-    if (panel === 1 && activeFile) {
+    if ((panel === 1 || panel === 2) && activeFile) {
+      if (currentMethodName) {
+        return getMethodContext(activeFile, currentMethodName, data, diffs, lineReviews);
+      }
       return getFileContext(activeFile, data, diffs, lineReviews);
     }
     const item = flatTree[safeIdx];
@@ -319,7 +339,7 @@ export function App({ initialData, rootDir, rescan }: AppProps) {
     if (item.node.type === 'repo') return getRepoContext(item.node.name, data, diffs, lineReviews);
     if (item.isFolder) return getFolderContext(item.node.name, data, diffs, lineReviews);
     return null;
-  }, [safeIdx, flatTree, data, diffs, lineReviews, panel, activeFile]);
+  }, [safeIdx, flatTree, data, diffs, lineReviews, panel, activeFile, currentMethodName]);
 
   // Auto-sync ctxIdx with current method when diff panel is active
   useEffect(() => {

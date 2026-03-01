@@ -176,6 +176,96 @@ function findFileIdByPath(path: string, result: ScanResult): string | undefined 
   return undefined;
 }
 
+// ── Method-level context (diff panel) ──
+
+export function getMethodContext(
+  fileId: string, methodName: string,
+  result: ScanResult, diffs: Map<string, TuiFileDiff>,
+  lineReviews: Map<string, LineReview>,
+): ContextData | null {
+  const fileCtx = getFileContext(fileId, result, diffs, lineReviews);
+  if (!fileCtx) return null;
+
+  const diff = diffs.get(fileId);
+  if (!diff) return fileCtx;
+
+  const file = findFileEntry(fileId, result);
+  if (!file) return fileCtx;
+
+  const method = [...file.methods, ...file.constants].find(m => m.name === methodName);
+  if (!method) return { ...fileCtx, activeMethod: methodName };
+
+  // Build lowercase content from method's diff lines (including context)
+  const contentLower = method.diff.map(d => d.c).join('\n').toLowerCase();
+
+  // Filter imports: specifier referenced in method code (case-insensitive)
+  const filteredImports = (fileCtx.imports ?? []).filter(imp =>
+    contentLower.includes(imp.name.toLowerCase()),
+  );
+
+  // Filter usedBy: method name referenced in caller's diff
+  const filteredUsedBy = computeMethodUsedBy(diff.path, methodName, result, diffs);
+
+  return {
+    ...fileCtx,
+    imports: filteredImports.length > 0 ? filteredImports : undefined,
+    usedBy: filteredUsedBy.length > 0 ? filteredUsedBy : undefined,
+    activeMethod: methodName,
+  };
+}
+
+function findFileEntry(fileId: string, result: ScanResult) {
+  for (const repo of result.repos) {
+    for (const file of repo.files) {
+      if (file.id === fileId) return file;
+    }
+  }
+  return null;
+}
+
+function computeMethodUsedBy(
+  filePath: string, methodName: string,
+  result: ScanResult, diffs: Map<string, TuiFileDiff>,
+): UsedByEntry[] {
+  const pathToId = new Map<string, string>();
+  for (const repo of result.repos) {
+    for (const file of repo.files) pathToId.set(file.path, file.id);
+  }
+
+  const entries: UsedByEntry[] = [];
+  const incomingLinks = result.links.filter(l => l.toFile === filePath);
+
+  for (const link of incomingLinks) {
+    const fromId = pathToId.get(link.fromFile);
+    const fromDiff = fromId ? diffs.get(fromId) : undefined;
+    if (!fromDiff) continue;
+
+    // Check if the referencing file's diff mentions the method name
+    const referencesMethod = fromDiff.rows.some(row => {
+      const content = (row.reviewLine?.c ?? '') + (row.baseLine?.c ?? '');
+      return content.includes(methodName);
+    });
+
+    if (referencesMethod) {
+      entries.push({
+        file: link.fromFile.split('/').pop() ?? link.fromFile,
+        method: link.methodName ?? link.label,
+        what: `${link.type}: ${link.label}`,
+        fileId: fromId,
+      });
+    }
+  }
+
+  // Deduplicate
+  const seen = new Set<string>();
+  return entries.filter(e => {
+    const key = `${e.file}:${e.method}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 // ── Line-level context (Mode 4) ──
 
 export function getLineContext(

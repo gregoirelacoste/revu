@@ -102,4 +102,5 @@ export interface ContextData {
   usedBy?: UsedByEntry[];
   sideEffects?: SideEffect[];
   reviewStats?: ReviewStats;
+  activeMethod?: string;
 }
