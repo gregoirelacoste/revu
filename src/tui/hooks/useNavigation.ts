@@ -333,6 +333,15 @@ function handleContextPanel(
     return true;
   }
 
+  // Toggle between CHANGES and DEPENDS ON zones
+  if (input === 'd') {
+    const depsStart = filtered.length;
+    if (depsStart < totalItems) {
+      setCtxIdx(() => ctxIdx < depsStart ? depsStart : 0);
+    }
+    return true;
+  }
+
   // Flag method from CHANGES section
   if (input === 'c' || input === 'x' || input === '?') {
     if (ctxIdx < filtered.length) {

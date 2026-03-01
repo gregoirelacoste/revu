@@ -309,22 +309,13 @@ export function App({ initialData, rootDir, rescan }: AppProps) {
     if (safeDiffCursor !== diffCursor && activeDiffRows.length > 0) setDiffCursor(safeDiffCursor);
   }, [safeDiffCursor, diffCursor, activeDiffRows.length]);
 
-  // Current method name: from diff cursor (panel 1) or from ctxIdx in CHANGES (panel 2)
+  // Current method name: from diff cursor for both diff (panel 1) and context (panel 2).
+  // In context panel, diffCursor updates when navigating CHANGES but stays locked
+  // when navigating DEPENDS ON / USED BY — so deps don't shuffle while traversing.
   const currentMethodName = useMemo(() => {
-    if (panel === 1) return activeDiffRows[safeDiffCursor]?.method ?? null;
-    if (panel === 2 && activeFile) {
-      // ctxIdx in CHANGES range → derive method name from file context chunks
-      const fileDiff = diffs.get(activeFile);
-      if (fileDiff) {
-        const fileCtx = getFileContext(activeFile, data, diffs, lineReviews);
-        if (fileCtx) {
-          const filtered = fileCtx.chunks.filter(c => c.crit >= minCrit);
-          if (ctxIdx < filtered.length) return filtered[ctxIdx].method;
-        }
-      }
-    }
+    if (panel === 1 || panel === 2) return activeDiffRows[safeDiffCursor]?.method ?? null;
     return null;
-  }, [panel, safeDiffCursor, activeDiffRows, activeFile, diffs, data, lineReviews, ctxIdx, minCrit]);
+  }, [panel, safeDiffCursor, activeDiffRows]);
 
   const ctx = useMemo((): ContextData | null => {
     if ((panel === 1 || panel === 2) && activeFile) {

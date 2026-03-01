@@ -143,6 +143,7 @@ const PAGES: TutorialPage[] = [
       { text: 'Context panel follows your cursor', color: C.green, bold: true },
       { text: 'When in diff, it shows the method/file context for the', color: C.text, indent: 2 },
       { text: 'current line. Use it to understand dependencies.', color: C.text, indent: 2 },
+      { text: 'Press d to jump between CHANGES and DEPENDS ON zones.', color: C.text, indent: 2 },
       { text: '' },
       { text: 'Review Map for overview', color: C.green, bold: true },
       { text: 'Press m to open the Review Map. See all files at a glance,', color: C.text, indent: 2 },

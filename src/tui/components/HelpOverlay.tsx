@@ -49,6 +49,7 @@ const SECTIONS: { title: string; keys: [string, string][] }[] = [
     title: 'CONTEXT',
     keys: [
       ['\u2191\u2193', 'Navigate entries'],
+      ['d', 'Toggle changes/deps zone'],
       ['Enter', 'Jump to file/method'],
       ['c / x / ?', 'Flag method (safe)'],
     ],
