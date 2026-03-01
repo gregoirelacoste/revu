@@ -1,8 +1,9 @@
 // ── Transform ScanResult → TUI data structures ──
 
 import type { ScanResult, FileEntry, RepoEntry } from '../core/engine.js';
-import type { MethodData } from '../core/types.js';
+import type { MethodData, LineCritMultipliers } from '../core/types.js';
 import { allMethods } from '../core/analyzer/side-effects.js';
+import { classifyLine } from '../core/scoring/content-signals.js';
 import type {
   TreeItem, FlatItem, TuiFileDiff, DiffRow,
   TuiDiffLine, UsedByEntry,
@@ -91,6 +92,7 @@ export function flattenTree(
 export function buildFileDiffs(result: ScanResult): Map<string, TuiFileDiff> {
   const diffs = new Map<string, TuiFileDiff>();
   const usedByMap = buildUsedByMap(result);
+  const lineCrit = result.config.scoring.lineCriticality;
 
   for (const repo of result.repos) {
     for (const file of repo.files) {
@@ -99,7 +101,7 @@ export function buildFileDiffs(result: ScanResult): Map<string, TuiFileDiff> {
       if (changed.length === 0) continue;
 
       const sorted = [...changed].sort((a, b) => b.crit - a.crit);
-      const rows = buildDiffRows(sorted);
+      const rows = buildDiffRows(sorted, lineCrit);
       diffs.set(file.id, {
         name: `${file.name}${file.ext}`,
         path: file.path,
@@ -115,7 +117,7 @@ export function buildFileDiffs(result: ScanResult): Map<string, TuiFileDiff> {
 
 const HUNK_FOOTER_THRESHOLD = 8;
 
-function buildDiffRows(methods: MethodData[]): DiffRow[] {
+function buildDiffRows(methods: MethodData[], lineCrit: LineCritMultipliers): DiffRow[] {
   const rows: DiffRow[] = [];
   // Global counters across all methods — ensures unique lineKeys per file
   let globalBaseLineNum = 0;
@@ -134,12 +136,13 @@ function buildDiffRows(methods: MethodData[]): DiffRow[] {
     if (m.status === 'del') {
       for (const d of m.diff) {
         globalBaseLineNum++;
+        const lc = classifyLine(d.c, lineCrit);
         rows.push({
           type: 'diffRow',
           method: m.name,
           methodCrit: m.crit,
           label,
-          baseLine: { n: globalBaseLineNum, c: d.c, t: 'del', crit: m.crit },
+          baseLine: { n: globalBaseLineNum, c: d.c, t: 'del', crit: lc },
           reviewLine: null,
         });
       }
@@ -157,14 +160,16 @@ function buildDiffRows(methods: MethodData[]): DiffRow[] {
     for (const d of m.diff) {
       if (d.t === 'd') {
         globalBaseLineNum++;
-        baseLines.push({ n: globalBaseLineNum, c: d.c, t: 'del', crit: m.crit * 0.8 });
+        const lc = classifyLine(d.c, lineCrit);
+        baseLines.push({ n: globalBaseLineNum, c: d.c, t: 'del', crit: lc });
       } else if (d.t === 'a') {
         globalReviewLineNum++;
         const localIdx = globalReviewLineNum - methodReviewStart;
         const isSig = m.sigChanged && localIdx <= 2;
+        const lc = classifyLine(d.c, lineCrit);
         reviewLines.push({
           n: globalReviewLineNum, c: d.c, t: 'add',
-          crit: isSig ? m.crit : m.crit * 0.6,
+          crit: isSig ? Math.max(lc, 2.0) : lc,
           isSig,
         });
       } else {

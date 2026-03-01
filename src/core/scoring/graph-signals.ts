@@ -108,6 +108,35 @@ export function computeExclusivity(path: string, graph: RepoGraph): number {
   return callerCount > 0 ? totalScore / callerCount : 0;
 }
 
+// ── Graph amplifier for V3 scoring ──
+
+function clamp(val: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, val));
+}
+
+/**
+ * Graph amplifier [0.5, 2.0]: structural importance modulates changeCrit.
+ * Isolated file → ÷2, hyper-connected → ×2.
+ */
+export function computeGraphAmplifier(
+  g: GraphSignals | undefined,
+  config: ScoringConfig,
+  fileType: string,
+  filePath: string,
+  computeSecurityWeight: (config: ScoringConfig, filePath: string) => number,
+): number {
+  if (!g) {
+    const typeWeight = config.fileTypes[fileType] ?? 0.4;
+    const secBonus = computeSecurityWeight(config, filePath) * 0.3;
+    return clamp(typeWeight + secBonus, 0.5, 2.0);
+  }
+  const raw = g.graphImportance * 0.35
+            + g.callerCritWeight * 0.30
+            + g.entryProximity * 0.25
+            + g.exclusivity * 0.10;
+  return clamp(0.5 + raw * 1.5, 0.5, 2.0);
+}
+
 // ── Aggregate: compute all graph signals for a file ──
 
 export interface GraphSignals {

@@ -1,22 +1,66 @@
 // ── Content-aware scoring signals — pure functions ──
 
-import type { MethodData, DetectedLink } from '../types.js';
+import type { MethodData, DetectedLink, LineCritMultipliers, ScoringConfig } from '../types.js';
 
 interface FileRef { path: string; type: string; methods: MethodData[] }
 
-// ── Couche 1: Base weights ──
+// ── Line classification patterns (first match wins) ──
 
-const CONTENT_PATTERNS: Array<{ re: RegExp; w: number }> = [
-  { re: /password|token|secret|credential/i, w: 0.25 },
-  { re: /@UseGuards|canActivate|@Roles/i, w: 0.20 },
-  { re: /try\b|catch\b|throw\b/, w: 0.20 },
-  { re: /@IsString|@IsEmail|@IsUUID|@IsNotEmpty|@IsOptional|@MaxLength|@MinLength|@IsEnum/, w: 0.15 },
-  { re: /if\b|else\b|switch\b|case\b/, w: 0.15 },
-  { re: /@Transform|@Type/, w: 0.12 },
-  { re: /await\b|Promise\.all/, w: 0.10 },
+const LINE_PATTERNS: Array<{ re: RegExp; category: keyof LineCritMultipliers }> = [
+  { re: /password|token|secret|credential|bcrypt|hash|salt/i, category: 'security' },
+  { re: /@UseGuards|canActivate|@Roles|authorize|authenticate/i, category: 'security' },
+  { re: /^[+-]\s*(export\s+)?(async\s+)?(function|class)\s+/, category: 'signature' },
+  { re: /@(Get|Post|Put|Delete|Patch)\s*\(/, category: 'signature' },
+  { re: /@Is\w+|@IsNotEmpty|@IsOptional|@MaxLength|@Transform|@Type/, category: 'signature' },
+  { re: /throw\s+new|\.catch\s*\(|catch\s*\(/, category: 'errorHandling' },
+  { re: /try\s*\{/, category: 'errorHandling' },
+  { re: /\.query\s*\(|\.execute\s*\(|createQueryBuilder|findOne|findMany|\.save\s*\(/, category: 'database' },
+  { re: /if\s*\(|else\s*\{|switch\s*\(|case\s+/, category: 'controlFlow' },
+  { re: /constructor\s*\(|@Inject/, category: 'injection' },
+  { re: /await\s+|Promise\.(all|race|allSettled)/, category: 'async' },
+  { re: /\.(map|filter|reduce|forEach|find|some|every)\s*\(/, category: 'dataTransform' },
+  { re: /return\s+/, category: 'returnLogic' },
+  { re: /(?:const|let|var)\s+\w+\s*=|this\.\w+\s*=/, category: 'assignment' },
+  { re: /export\s+(class|interface|type|enum|const|function)/, category: 'declaration' },
+  { re: /^[+-]\s*(interface|type)\s+\w+/, category: 'typeDecl' },
+  { re: /console\.(log|warn|error|debug)|this\.logger/, category: 'logging' },
+  { re: /import\s+.*from|require\s*\(/, category: 'import' },
+  { re: /^\s*\/\/|^\s*\/\*|^\s*\*\s|^\s*\*\//, category: 'comment' },
+  { re: /^\s*$/, category: 'whitespace' },
 ];
 
-/** Regex-based risk on diff line content (added/deleted lines only). */
+/** Classify a single line → multiplier weight from config. */
+export function classifyLine(content: string, multipliers: LineCritMultipliers): number {
+  for (const { re, category } of LINE_PATTERNS) {
+    if (re.test(content)) return multipliers[category];
+  }
+  return multipliers.assignment; // default fallback
+}
+
+/** Top-heavy changeCrit: content of the diff dictates the base score (0-10). */
+export function computeChangeCrit(methods: MethodData[], config: ScoringConfig): number {
+  const weights: number[] = [];
+  for (const m of methods) {
+    const diffLines = m.diff.filter(d => d.t !== 'c');
+    for (let i = 0; i < diffLines.length; i++) {
+      let w = classifyLine(diffLines[i].c, config.lineCriticality);
+      // Semantic pair bonus: adjacent del+add with weight > 0.5 → ×1.3
+      if (i > 0 && diffLines[i].t !== diffLines[i - 1].t) {
+        const prevW = classifyLine(diffLines[i - 1].c, config.lineCriticality);
+        if (w > 0.5 && prevW > 0.5) w = Math.max(w, prevW) * 1.3;
+      }
+      weights.push(w);
+    }
+  }
+  if (weights.length === 0) return 0;
+  weights.sort((a, b) => b - a);
+  const topK = Math.max(1, Math.ceil(weights.length * 0.2));
+  const topMean = weights.slice(0, topK).reduce((a, b) => a + b, 0) / topK;
+  const fullMean = weights.reduce((a, b) => a + b, 0) / weights.length;
+  return Math.min(10, (topMean * 0.6 + fullMean * 0.4) * 4);
+}
+
+/** Legacy computeContentRisk — kept for method-level scoring. */
 export function computeContentRisk(methods: MethodData[]): number {
   let totalWeight = 0;
   let lineCount = 0;
@@ -24,8 +68,8 @@ export function computeContentRisk(methods: MethodData[]): number {
     for (const d of m.diff) {
       if (d.t === 'c') continue;
       lineCount++;
-      for (const { re, w } of CONTENT_PATTERNS) {
-        if (re.test(d.c)) { totalWeight += w; break; }
+      for (const { re, category } of LINE_PATTERNS) {
+        if (re.test(d.c)) { totalWeight += (category === 'security' ? 0.25 : 0.15); break; }
       }
     }
   }

@@ -114,15 +114,21 @@ export interface ScoringWeights {
 }
 
 export interface LineCritMultipliers {
-  signatureChange: number;
-  returnTypeChange: number;
-  parameterChange: number;
-  guardDecorator: number;
-  newDependencyInjection: number;
+  security: number;
+  signature: number;
   errorHandling: number;
-  regularCode: number;
-  comment: number;
+  database: number;
+  controlFlow: number;
+  injection: number;
+  async: number;
+  dataTransform: number;
+  returnLogic: number;
+  assignment: number;
+  declaration: number;
+  typeDecl: number;
+  logging: number;
   import: number;
+  comment: number;
   whitespace: number;
 }
 

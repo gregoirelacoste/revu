@@ -1,7 +1,8 @@
 import type { ScoringConfig, MethodData, DetectedLink } from '../types.js';
 import type { GraphSignals } from './graph-signals.js';
+import { computeGraphAmplifier } from './graph-signals.js';
 import {
-  computeContentRisk, computeMethodRisk, computeStabilityRisk,
+  computeChangeCrit, computeContentRisk,
   computeCompoundSigDep, computeChangePropagation, computeCascadeDepth,
   computeDtoContractChange, computeExistingEndpointMod,
   computeFormattingDiscount, computeTestDiscount,
@@ -49,65 +50,32 @@ export function computeFileCriticality(
   return Math.round(raw * 10) / 10;
 }
 
-// ── V2 scorer (3 layers: graph base + content/compound bonus + attenuation) ──
+// ── V3 scorer: changeCrit × graphAmplifier × (1 + compoundBonus) × attenuations ──
 
 export function computeFileCriticalityV2(config: ScoringConfig, s: FileSignals): number {
-  const { weights } = config;
   const allMethods = [...s.methods, ...s.constants];
 
-  // Layer 1: Graph-based signals (source of truth) + content signals
-  const g = s.graph;
-  const contentRisk = computeContentRisk(allMethods);
-  const stability = computeStabilityRisk(s.additions, s.deletions);
+  // 1. Intrinsic change criticality (0-10)
+  const changeCrit = computeChangeCrit(allMethods, config);
 
-  let baseScore: number;
-  if (g) {
-    // Graph-based scoring (6 signals, graph = 0.75, content = 0.25)
-    baseScore = (
-      g.graphImportance * weights.graphImportance +
-      g.callerCritWeight * weights.callerCritWeight +
-      g.entryProximity * weights.entryProximity +
-      g.exclusivity * weights.exclusivity +
-      contentRisk * weights.contentRisk +
-      stability * weights.stability
-    ) * 10;
-  } else {
-    // Fallback: legacy path-based scoring (no graph available)
-    const typeWeight = config.fileTypes[s.fileType] ?? 0.4;
-    const changeWeight = Math.min(1.0, (s.additions + s.deletions) / 200);
-    const depWeight = Math.min(1.0, s.dependencyCount / 10);
-    const securityWeight = computeSecurityWeight(config, s.filePath);
-    baseScore = (
-      typeWeight * weights.fileType +
-      changeWeight * weights.changeVolume +
-      depWeight * weights.dependencies +
-      securityWeight * weights.securityContext +
-      contentRisk * weights.contentRisk +
-      stability * weights.stability
-    ) * 10;
-  }
+  // 2. Graph amplifier (0.5-2.0)
+  const graphAmp = computeGraphAmplifier(
+    s.graph, config, s.fileType, s.filePath, computeSecurityWeight,
+  );
 
-  // Layer 2: compound bonuses (legacy signals become bonus modifiers)
-  let compoundBonus =
+  // 3. Compound bonuses
+  const compoundBonus =
     computeCompoundSigDep(s.methods, s.dependencyCount) +
     computeChangePropagation(s.filePath, s.allFiles, s.links) +
     computeCascadeDepth(s.filePath, s.allFiles, s.links) +
     computeDtoContractChange(s.fileType, s.methods, s.constants) +
     computeExistingEndpointMod(s.fileType, s.methods);
 
-  // Legacy path-based signals as secondary bonus (when graph is active)
-  if (g) {
-    const securityWeight = computeSecurityWeight(config, s.filePath);
-    if (securityWeight > 0) compoundBonus += securityWeight * 0.15;
-    const methodRisk = computeMethodRisk(s.methods);
-    if (methodRisk > 0.3) compoundBonus += methodRisk * 0.10;
-  }
-
-  // Layer 3: attenuations
+  // 4. Attenuations
   const fmtDiscount = computeFormattingDiscount(s.methods, s.constants);
   const testDiscount = computeTestDiscount(s.tested);
 
-  const raw = baseScore * (1 + compoundBonus) * fmtDiscount * testDiscount;
+  const raw = changeCrit * graphAmp * (1 + compoundBonus) * fmtDiscount * testDiscount;
   return Math.round(Math.min(10, Math.max(0, raw)) * 10) / 10;
 }
 
@@ -171,7 +139,7 @@ export function computeMethodCriticality(
   return Math.round(raw * 10) / 10;
 }
 
-function computeSecurityWeight(config: ScoringConfig, filePath: string): number {
+export function computeSecurityWeight(config: ScoringConfig, filePath: string): number {
   const { securityKeywords, securityBonus } = config;
   const lowerPath = filePath.toLowerCase();
 
