@@ -101,6 +101,9 @@ export interface ScoringWeights {
   changeVolume: number;
   dependencies: number;
   securityContext: number;
+  contentRisk: number;
+  methodRisk: number;
+  stability: number;
 }
 
 export interface LineCritMultipliers {

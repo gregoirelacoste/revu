@@ -7,7 +7,11 @@ import { computeDiff, getFileAtBranch } from './scanner/diff-parser.js';
 import { classifyFile, isDisplayableFile, isTypeScriptFile } from './analyzer/file-classifier.js';
 import { parseTypeScript } from './analyzer/ast-parser.js';
 import { detectLinks } from './analyzer/link-detector.js';
-import { computeFileCriticality, computeMethodCriticality } from './scoring/criticality.js';
+import {
+  computeFileCriticality, computeMethodCriticality,
+  computeFileCriticalityV2, computeMethodCriticalityV2,
+  type FileSignals,
+} from './scoring/criticality.js';
 import { loadConfig } from './scoring/config.js';
 import { buildMethodData, buildConstantData, buildUncoveredDiff } from './analyzer/diff-extractor.js';
 import { detectSideEffects } from './analyzer/side-effects.js';
@@ -73,7 +77,7 @@ export async function scan(rootDir: string, baseBranch = 'develop', includeWorki
   const fileCritMap = buildFileCritMap(repoEntries);
   const links = detectLinks(allParsedFiles, fileCritMap);
 
-  // Enrich files with real dependency counts, then recompute criticality
+  // Enrich files with real dependency counts, then recompute criticality (v2)
   enrichWithDependencies(repoEntries, links, config.scoring);
 
   // Mark methods impacted by signature changes in their dependencies
@@ -208,25 +212,48 @@ function enrichWithDependencies(repos: RepoEntry[], links: DetectedLink[], scori
       methodUsages.set(key, (methodUsages.get(key) ?? 0) + 1);
     }
   }
-  const maxUsage = Math.max(1, ...methodUsages.values());
 
+  // Build flat file list for cross-file signals
+  const allFiles: FileSignals['allFiles'] = [];
   for (const repo of repos) {
     for (const file of repo.files) {
-      const deps = depCount.get(file.path) ?? 0;
-      if (deps > 0) {
-        // Recompute with real dependency count
-        file.crit = computeFileCriticality(
-          scoring, file.type, file.add, file.del, deps, `${file.dir}/${file.name}${file.ext}`,
-        );
-      }
+      allFiles.push({ path: file.path, type: file.type, methods: file.methods });
+    }
+  }
 
+  // First pass: set method usages + recompute file crit with v2
+  for (const repo of repos) {
+    for (const file of repo.files) {
+      // Set method usages before file scoring (methodRisk uses usages)
       for (const m of file.methods) {
         const key = `${file.path}:${m.name}`;
-        const usages = methodUsages.get(key) ?? 1;
-        m.usages = usages;
-        m.crit = computeMethodCriticality(
-          scoring, file.crit, usages, maxUsage, m.sigChanged, `${file.dir}/${file.name}${file.ext}`,
-        );
+        m.usages = methodUsages.get(key) ?? 1;
+      }
+
+      const deps = depCount.get(file.path) ?? 0;
+      const signals: FileSignals = {
+        additions: file.add,
+        deletions: file.del,
+        dependencyCount: deps,
+        filePath: file.path,
+        fileType: file.type,
+        methods: file.methods,
+        constants: file.constants,
+        tested: file.tested,
+        allFiles,
+        links,
+      };
+      file.crit = computeFileCriticalityV2(scoring, signals);
+    }
+  }
+
+  // Second pass: cascade to method crits (need final file.crit)
+  const maxUsage = Math.max(1, ...methodUsages.values());
+  for (const repo of repos) {
+    for (const file of repo.files) {
+      const fp = `${file.dir}/${file.name}${file.ext}`;
+      for (const m of file.methods) {
+        m.crit = computeMethodCriticalityV2(scoring, file.crit, m, maxUsage, fp);
       }
     }
   }
@@ -268,16 +295,29 @@ export function rescore(result: ScanResult, override: ScoringOverride): void {
     }
   }
 
-  // Recompute file crits, then cascade to methods
+  // Build flat file list for cross-file signals
+  const allFiles: FileSignals['allFiles'] = [];
+  for (const repo of result.repos) {
+    for (const file of repo.files) {
+      allFiles.push({ path: file.path, type: file.type, methods: file.methods });
+    }
+  }
+
+  // Recompute file crits with v2, then cascade to methods
   for (const repo of result.repos) {
     for (const file of repo.files) {
       const fileOverride = override.fileOverrides?.[file.path];
       const deps = depCount.get(file.path) ?? 0;
 
-      file.crit = computeFileCriticality(
-        overriddenScoring, file.type, file.add, file.del, deps,
-        `${file.dir}/${file.name}${file.ext}`,
-      );
+      const signals: FileSignals = {
+        additions: file.add, deletions: file.del,
+        dependencyCount: deps,
+        filePath: file.path, fileType: file.type,
+        methods: file.methods, constants: file.constants,
+        tested: file.tested,
+        allFiles, links: result.links,
+      };
+      file.crit = computeFileCriticalityV2(overriddenScoring, signals);
 
       if (fileOverride) {
         file.crit = Math.round(file.crit * fileOverride.weight * 10) / 10;
@@ -285,11 +325,9 @@ export function rescore(result: ScanResult, override: ScoringOverride): void {
       }
 
       // Cascade to methods
+      const fp = `${file.dir}/${file.name}${file.ext}`;
       for (const m of [...file.methods, ...file.constants]) {
-        m.crit = computeMethodCriticality(
-          overriddenScoring, file.crit, m.usages, maxUsage, m.sigChanged,
-          `${file.dir}/${file.name}${file.ext}`,
-        );
+        m.crit = computeMethodCriticalityV2(overriddenScoring, file.crit, m, maxUsage, fp);
       }
     }
   }

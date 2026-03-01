@@ -8,7 +8,7 @@ import type { TuiFileDiff, DiffRow } from '../tui/types.js';
 
 export function defaultScoringConfig(): ScoringConfig {
   return {
-    weights: { fileType: 0.25, changeVolume: 0.25, dependencies: 0.25, securityContext: 0.25 },
+    weights: { fileType: 0.20, changeVolume: 0.15, dependencies: 0.20, securityContext: 0.15, contentRisk: 0.15, methodRisk: 0.10, stability: 0.05 },
     fileTypes: {
       module: 1.0, guard: 0.9, interceptor: 0.8, service: 0.8,
       controller: 0.7, component: 0.5, pipe: 0.4, dto: 0.3,

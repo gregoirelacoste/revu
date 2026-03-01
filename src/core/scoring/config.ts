@@ -4,10 +4,13 @@ import type { RevuConfig, ScoringConfig } from '../types.js';
 
 const DEFAULT_SCORING: ScoringConfig = {
   weights: {
-    fileType: 0.25,
-    changeVolume: 0.25,
-    dependencies: 0.25,
-    securityContext: 0.25,
+    fileType: 0.20,
+    changeVolume: 0.15,
+    dependencies: 0.20,
+    securityContext: 0.15,
+    contentRisk: 0.15,
+    methodRisk: 0.10,
+    stability: 0.05,
   },
   fileTypes: {
     module: 1.0,
