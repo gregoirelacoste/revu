@@ -29,6 +29,8 @@ interface NavSetters {
   setCtxIdx: (fn: (v: number) => number) => void;
   setMinCrit: (fn: (v: number) => number) => void;
   setLineFlag: (lineKey: string, flag: LineFlag | undefined) => void;
+  setLineFlagBatch: (entries: Array<[string, LineFlag | undefined]>) => void;
+  setBatchMsg: (msg: string | null) => void;
   setCollapsed: (fn: (v: Set<string>) => Set<string>) => void;
   setInputMode: (v: InputMode | null) => void;
   setSearchQuery: (v: string | null) => void;
@@ -48,6 +50,56 @@ interface NavContext {
   bodyH: number;
   lineReviews: Map<string, LineReview>;
   fileProgress: Map<string, 'none' | 'partial' | 'complete'>;
+}
+
+// ── Batch flag helpers ──
+
+function getHunkLines(rows: DiffRow[], hunkIdx: number, fileId: string): string[] {
+  const keys: string[] = [];
+  for (let j = hunkIdx + 1; j < rows.length; j++) {
+    if (rows[j].type !== 'diffRow') break;
+    if (rows[j].reviewLine) keys.push(`${fileId}:${rows[j].reviewLine!.n}`);
+  }
+  return keys;
+}
+
+function getAllFileLines(diffs: Map<string, TuiFileDiff>, fileId: string): string[] {
+  const diff = diffs.get(fileId);
+  if (!diff) return [];
+  const keys: string[] = [];
+  for (const row of diff.rows) {
+    if (row.type === 'diffRow' && row.reviewLine) keys.push(`${fileId}:${row.reviewLine.n}`);
+  }
+  return keys;
+}
+
+function batchFlagSafe(
+  keys: string[],
+  flag: LineFlag,
+  lineReviews: Map<string, LineReview>,
+  setLineFlagBatch: (entries: Array<[string, LineFlag | undefined]>) => void,
+): number {
+  if (keys.length === 0) return 0;
+  const withNoFlag = keys.filter(k => !lineReviews.get(k)?.flag);
+  const withThisFlag = keys.filter(k => lineReviews.get(k)?.flag === flag);
+
+  if (withNoFlag.length > 0) {
+    setLineFlagBatch(withNoFlag.map(k => [k, flag]));
+    return withNoFlag.length;
+  }
+  if (withThisFlag.length > 0) {
+    setLineFlagBatch(withThisFlag.map(k => [k, undefined]));
+    return -withThisFlag.length;
+  }
+  return 0;
+}
+
+function emitBatchMsg(count: number, flag: LineFlag, setBatchMsg: (msg: string | null) => void): void {
+  if (count === 0) return;
+  const label = count > 0
+    ? `${count} lines flagged ${flag}`
+    : `${-count} ${flag} flags removed`;
+  setBatchMsg(label);
 }
 
 function handleTreePanel(
@@ -101,21 +153,27 @@ function handleTreePanel(
     return true;
   }
 
-  // Batch validate: 'C' (Shift+c) — set 'ok' only on lines with no flag
-  if (input === 'C' && !item.isFolder && item.node.id) {
-    const fileDiff = diffs.get(item.node.id);
-    if (fileDiff) {
-      const { lineReviews } = context;
-      for (const row of fileDiff.rows) {
-        if (row.type === 'diffRow' && row.reviewLine) {
-          const lineKey = `${item.node.id}:${row.reviewLine.n}`;
-          const existing = lineReviews.get(lineKey);
-          if (!existing?.flag) {
-            setters.setLineFlag(lineKey, 'ok');
-          }
+  // Batch flag: c/x/? — safe (only flags lines without existing flag, toggle off if all same)
+  if (input === 'c' || input === 'x' || input === '?') {
+    const flag: LineFlag = input === 'c' ? 'ok' : input === 'x' ? 'bug' : 'question';
+    let keys: string[];
+
+    if (!item.isFolder && item.node.id) {
+      keys = getAllFileLines(diffs, item.node.id);
+    } else if (item.isFolder) {
+      keys = [];
+      for (let j = treeIdx + 1; j < flatTree.length; j++) {
+        if (flatTree[j].depth <= item.depth) break;
+        if (!flatTree[j].isFolder && flatTree[j].node.id) {
+          keys.push(...getAllFileLines(diffs, flatTree[j].node.id!));
         }
       }
+    } else {
+      keys = [];
     }
+
+    const count = batchFlagSafe(keys, flag, context.lineReviews, setters.setLineFlagBatch);
+    emitBatchMsg(count, flag, setters.setBatchMsg);
     return true;
   }
 
@@ -194,6 +252,25 @@ function handleDiffPanel(
   if (input === 's') { setters.onToggleDiffMode?.(); return true; }
 
   const curRow = diffRows[diffCursor];
+
+  // Hunk-level flag: cursor on hunkHeader or hunkFooter
+  if ((curRow?.type === 'hunkHeader' || curRow?.type === 'hunkFooter') && selectedFile) {
+    if (input === 'c' || input === 'x' || input === '?') {
+      const flag: LineFlag = input === 'c' ? 'ok' : input === 'x' ? 'bug' : 'question';
+      let headerIdx = diffCursor;
+      if (curRow.type === 'hunkFooter') {
+        for (let j = diffCursor - 1; j >= 0; j--) {
+          if (diffRows[j].type === 'hunkHeader') { headerIdx = j; break; }
+        }
+      }
+      const keys = getHunkLines(diffRows, headerIdx, selectedFile);
+      const count = batchFlagSafe(keys, flag, context.lineReviews, setters.setLineFlagBatch);
+      emitBatchMsg(count, flag, setters.setBatchMsg);
+      return true;
+    }
+  }
+
+  // Line-level flag
   if (curRow?.type === 'diffRow' && curRow.reviewLine && selectedFile) {
     const lineKey = `${selectedFile}:${curRow.reviewLine.n}`;
     if (input === 'c') { setLineFlag(lineKey, 'ok'); return true; }
@@ -220,6 +297,28 @@ function handleContextPanel(
 
   if (key.upArrow) { setCtxIdx(i => Math.max(0, i - 1)); return true; }
   if (key.downArrow) { setCtxIdx(i => Math.min(Math.max(0, totalItems - 1), i + 1)); return true; }
+
+  // Flag method from CHANGES section
+  if (input === 'c' || input === 'x' || input === '?') {
+    if (ctxIdx < filtered.length) {
+      const chunk = filtered[ctxIdx];
+      if (chunk?.fileId) {
+        const fileDiff = diffs.get(chunk.fileId);
+        if (fileDiff) {
+          for (let j = 0; j < fileDiff.rows.length; j++) {
+            if (fileDiff.rows[j].type === 'hunkHeader' && fileDiff.rows[j].method === chunk.method) {
+              const flag: LineFlag = input === 'c' ? 'ok' : input === 'x' ? 'bug' : 'question';
+              const keys = getHunkLines(fileDiff.rows, j, chunk.fileId);
+              const count = batchFlagSafe(keys, flag, context.lineReviews, setters.setLineFlagBatch);
+              emitBatchMsg(count, flag, setters.setBatchMsg);
+              break;
+            }
+          }
+        }
+      }
+    }
+    return true;
+  }
 
   if (key.return) {
     const navigateToFile = (fileId: string, hunkMethod?: string) => {

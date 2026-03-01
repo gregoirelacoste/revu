@@ -31,6 +31,13 @@ export function App({ data, rootDir }: AppProps) {
 
   const tree = useMemo(() => buildTree(data), [data]);
   const diffs = useMemo(() => buildFileDiffs(data), [data]);
+  const fileToRepo = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const repo of data.repos) {
+      for (const file of repo.files) map.set(file.id, repo.name);
+    }
+    return map;
+  }, [data]);
 
   // State
   const [panel, setPanel] = useState(0);
@@ -43,11 +50,12 @@ export function App({ data, rootDir }: AppProps) {
   const [diffCursor, setDiffCursor] = useState(0);
   const [inputMode, setInputMode] = useState<InputMode | null>(null);
   const [diffMode, setDiffMode] = useState<DiffMode>('unified');
-  const { lineReviews, setLineFlag, addLineComment } = useReview(rootDir, data);
+  const { lineReviews, setLineFlag, setLineFlagBatch, addLineComment } = useReview(rootDir, data);
   const { fileProgress, globalStats, sideEffectCount } = useReviewProgress(data, diffs, lineReviews);
   const history = useNavHistory();
   const [searchQuery, setSearchQuery] = useState<string | null>(null);
   const [exportMsg, setExportMsg] = useState<string | null>(null);
+  const [batchMsg, setBatchMsg] = useState<string | null>(null);
   const [showHelp, setShowHelp] = useState(false);
 
   const handleExport = useCallback(() => {
@@ -67,6 +75,13 @@ export function App({ data, rootDir }: AppProps) {
       setTimeout(() => setExportMsg(null), 3000);
     });
   }, [data, diffs, lineReviews, rootDir]);
+
+  const batchMsgTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleBatchMsg = useCallback((msg: string | null) => {
+    if (batchMsgTimer.current) clearTimeout(batchMsgTimer.current);
+    setBatchMsg(msg);
+    if (msg) batchMsgTimer.current = setTimeout(() => setBatchMsg(null), 3000);
+  }, []);
 
   // Inline comment input
   useInputMode(panel === 1, inputMode, setInputMode, addLineComment);
@@ -154,6 +169,13 @@ export function App({ data, rootDir }: AppProps) {
 
   const activeFile = previewFile ?? selectedFile;
 
+  const currentRepo = useMemo(() => {
+    for (let i = safeIdx; i >= 0; i--) {
+      if (flatTree[i]?.node.type === 'repo') return flatTree[i].node.name;
+    }
+    return null;
+  }, [flatTree, safeIdx]);
+
   // Reset ctxIdx + diff position when active file changes
   const prevActiveFile = useRef(activeFile);
   useEffect(() => {
@@ -211,7 +233,7 @@ export function App({ data, rootDir }: AppProps) {
   // Navigation — pass activeDiffRows so nav works on the correct array
   useNavigation(
     { panel, treeIdx: safeIdx, selectedFile, diffScroll, diffCursor: safeDiffCursor, ctxIdx, minCrit, collapsed, inputMode, searchQuery, showHelp },
-    { setPanel, setTreeIdx, setSelectedFile, setDiffScroll, setDiffCursor, setCtxIdx, setMinCrit, setLineFlag, setCollapsed, setInputMode, setSearchQuery, setShowHelp, onExport: handleExport, onToggleDiffMode: handleToggleDiffMode, historyPush: history.push, historyGoBack: history.goBack, historyGoForward: history.goForward },
+    { setPanel, setTreeIdx, setSelectedFile, setDiffScroll, setDiffCursor, setCtxIdx, setMinCrit, setLineFlag, setLineFlagBatch, setBatchMsg: handleBatchMsg, setCollapsed, setInputMode, setSearchQuery, setShowHelp, onExport: handleExport, onToggleDiffMode: handleToggleDiffMode, historyPush: history.push, historyGoBack: history.goBack, historyGoForward: history.goForward },
     { flatTree, diffRows: activeDiffRows, diffs, ctx, bodyH, lineReviews, fileProgress },
   );
 
@@ -220,9 +242,22 @@ export function App({ data, rootDir }: AppProps) {
   const halfDiff = Math.floor((diffW - 3) / 2);
   const visibleDiffRows = activeDiffRows.slice(diffScroll, diffScroll + bodyH - 3);
 
-  // Diff panel label
+  // Diff panel label — breadcrumb with repo context
   const modeTag = effectiveMode === 'unified' ? 'unified' : 'sbs';
-  const diffLabel = currentDiff ? `${currentDiff.name} (${modeTag})` : 'DIFF';
+  const diffLabel = useMemo(() => {
+    if (!currentDiff) return 'DIFF';
+    const repo = activeFile ? fileToRepo.get(activeFile) : null;
+    const isMulti = data.repos.length > 1;
+    const prefix = isMulti && repo ? `${repo} \u203A ` : '';
+    const fullLabel = `${prefix}${currentDiff.path} (${modeTag})`;
+    const maxLabelW = diffW - 4;
+    return fullLabel.length > maxLabelW
+      ? '\u2026' + fullLabel.slice(fullLabel.length - maxLabelW + 1)
+      : fullLabel;
+  }, [currentDiff, activeFile, fileToRepo, data.repos.length, modeTag, diffW]);
+
+  // Explorer label — show current repo
+  const explorerLabel = currentRepo ? `EXPLORER \u00B7 ${currentRepo}` : 'EXPLORER';
 
   return (
     <Box flexDirection="column" width={size.w} height={size.h}>
@@ -253,7 +288,7 @@ export function App({ data, rootDir }: AppProps) {
       {/* 3 Panels */}
       <Box flexDirection="row" height={bodyH}>
         {/* LEFT: Explorer */}
-        <Border label="EXPLORER" color={panel === 0 ? C.accent : C.border} width={treeW} height={bodyH}>
+        <Border label={explorerLabel} color={panel === 0 ? C.accent : C.border} width={treeW} height={bodyH}>
           <Box flexDirection="column" overflow="hidden">
             {visibleTree.map((item, i) => (
               <TreeRow
@@ -385,7 +420,7 @@ export function App({ data, rootDir }: AppProps) {
       </Box>
 
       {/* Status bar */}
-      <StatusBar repoCount={data.repos.length} stats={globalStats} sideEffects={sideEffectCount} width={size.w} exportMsg={exportMsg} canGoBack={history.canGoBack} canGoForward={history.canGoForward} />
+      <StatusBar repoCount={data.repos.length} stats={globalStats} sideEffects={sideEffectCount} width={size.w} exportMsg={exportMsg} batchMsg={batchMsg} canGoBack={history.canGoBack} canGoForward={history.canGoForward} />
     </Box>
   );
 }

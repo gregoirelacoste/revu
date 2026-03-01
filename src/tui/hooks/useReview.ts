@@ -16,6 +16,7 @@ export interface LineReview {
 export interface UseReviewResult {
   lineReviews: Map<string, LineReview>;
   setLineFlag: (lineKey: string, flag: LineFlag | undefined) => void;
+  setLineFlagBatch: (entries: Array<[string, LineFlag | undefined]>) => void;
   addLineComment: (lineKey: string, text: string) => void;
 }
 
@@ -91,6 +92,23 @@ export function useReview(rootDir: string, data: ScanResult): UseReviewResult {
     });
   }, [scheduleSave]);
 
+  const setLineFlagBatch = useCallback((entries: Array<[string, LineFlag | undefined]>) => {
+    if (entries.length === 0) return;
+    setLineReviews(prev => {
+      const next = new Map(prev);
+      for (const [lineKey, flag] of entries) {
+        const existing = next.get(lineKey);
+        if (flag) {
+          next.set(lineKey, { flag, comments: existing?.comments ?? [] });
+        } else {
+          next.delete(lineKey);
+        }
+      }
+      scheduleSave(next);
+      return next;
+    });
+  }, [scheduleSave]);
+
   const addLineComment = useCallback((lineKey: string, text: string) => {
     setLineReviews(prev => {
       const next = new Map(prev);
@@ -105,7 +123,7 @@ export function useReview(rootDir: string, data: ScanResult): UseReviewResult {
     });
   }, [scheduleSave]);
 
-  return { lineReviews, setLineFlag, addLineComment };
+  return { lineReviews, setLineFlag, setLineFlagBatch, addLineComment };
 }
 
 async function saveReviews(
