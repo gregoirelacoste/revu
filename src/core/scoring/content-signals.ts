@@ -257,7 +257,7 @@ export function computeFormattingDiscount(methods: MethodData[], constants: Meth
   for (const m of active) {
     changeLines += m.diff.filter(d => d.t !== 'c').length;
   }
-  if (changeLines < 5 && active.length <= 1) return 0.7; // Minor tweak
+  if (changeLines <= 5 && active.length <= 1) return 0.7; // Minor tweak
   return 1.0;
 }
 

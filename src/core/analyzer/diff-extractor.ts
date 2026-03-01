@@ -84,15 +84,33 @@ function normalizeLine(s: string): string {
   return s.trim().replace(/\s+/g, ' ').replace(/[;,]$/g, '').replace(/'/g, '"');
 }
 
+/** Strip all whitespace, commas, semicolons for concat comparison. */
+function normalizeConcat(lines: string[]): string {
+  return lines.map(s => s.trim()).join(' ')
+    .replace(/\s+/g, '')
+    .replace(/[;,]/g, '')
+    .replace(/'/g, '"');
+}
+
 function isFormattingOnly(diff: Array<{ t: DiffLineType; c: string }>): boolean {
   if (diff.length === 0) return true;
-  const adds = diff.filter(d => d.t === 'a').map(d => normalizeLine(d.c));
-  const dels = diff.filter(d => d.t === 'd').map(d => normalizeLine(d.c));
+  const adds = diff.filter(d => d.t === 'a');
+  const dels = diff.filter(d => d.t === 'd');
   if (adds.length === 0 && dels.length === 0) return true;
-  if (adds.length !== dels.length) return false;
-  const sortedAdds = [...adds].sort();
-  const sortedDels = [...dels].sort();
-  return sortedAdds.every((a, i) => a === sortedDels[i]);
+
+  // Line-by-line match (same count, same normalized content)
+  if (adds.length === dels.length) {
+    const normAdds = adds.map(d => normalizeLine(d.c));
+    const normDels = dels.map(d => normalizeLine(d.c));
+    const sortedAdds = [...normAdds].sort();
+    const sortedDels = [...normDels].sort();
+    if (sortedAdds.every((a, i) => a === sortedDels[i])) return true;
+  }
+
+  // Concatenated match: multi-line ↔ single-line reformatting
+  const addConcat = normalizeConcat(adds.map(d => d.c));
+  const delConcat = normalizeConcat(dels.map(d => d.c));
+  return addConcat === delConcat;
 }
 
 // ── Uncovered diff: captures changes outside method/constant ranges (e.g. imports) ──
