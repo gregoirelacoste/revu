@@ -11,7 +11,6 @@ const LINE_PATTERNS: Array<{ re: RegExp; category: keyof LineCritMultipliers }> 
   { re: /@UseGuards|canActivate|@Roles|authorize|authenticate/i, category: 'security' },
   { re: /^[+-]\s*(export\s+)?(async\s+)?(function|class)\s+/, category: 'signature' },
   { re: /@(Get|Post|Put|Delete|Patch)\s*\(/, category: 'signature' },
-  { re: /@Is\w+|@IsNotEmpty|@IsOptional|@MaxLength|@Transform|@Type/, category: 'signature' },
   { re: /throw\s+new|\.catch\s*\(|catch\s*\(/, category: 'errorHandling' },
   { re: /try\s*\{/, category: 'errorHandling' },
   { re: /\.query\s*\(|\.execute\s*\(|createQueryBuilder|findOne|findMany|\.save\s*\(/, category: 'database' },
@@ -20,6 +19,7 @@ const LINE_PATTERNS: Array<{ re: RegExp; category: keyof LineCritMultipliers }> 
   { re: /await\s+|Promise\.(all|race|allSettled)/, category: 'async' },
   { re: /\.(map|filter|reduce|forEach|find|some|every)\s*\(/, category: 'dataTransform' },
   { re: /return\s+/, category: 'returnLogic' },
+  { re: /@Is\w+|@IsNotEmpty|@IsOptional|@MaxLength|@ValidateNested|@Transform|@Type/, category: 'typeDecl' },
   { re: /(?:const|let|var)\s+\w+\s*=|this\.\w+\s*=/, category: 'assignment' },
   { re: /export\s+(class|interface|type|enum|const|function)/, category: 'declaration' },
   { re: /^[+-]\s*(interface|type)\s+\w+/, category: 'typeDecl' },
@@ -31,6 +31,12 @@ const LINE_PATTERNS: Array<{ re: RegExp; category: keyof LineCritMultipliers }> 
 
 /** Classify a single line → multiplier weight from config. */
 export function classifyLine(content: string, multipliers: LineCritMultipliers): number {
+  const trimmed = content.trimStart();
+  // Fast-path: comments are comments, even if they mention security keywords
+  if (trimmed.startsWith('//') || trimmed.startsWith('/*') || trimmed.startsWith('*') || trimmed.startsWith('*/')) {
+    return multipliers.comment;
+  }
+  if (trimmed === '') return multipliers.whitespace;
   for (const { re, category } of LINE_PATTERNS) {
     if (re.test(content)) return multipliers[category];
   }
