@@ -117,6 +117,9 @@ const HUNK_FOOTER_THRESHOLD = 8;
 
 function buildDiffRows(methods: MethodData[]): DiffRow[] {
   const rows: DiffRow[] = [];
+  // Global counters across all methods — ensures unique lineKeys per file
+  let globalBaseLineNum = 0;
+  let globalReviewLineNum = 0;
 
   for (const m of methods) {
     const label = methodLabel(m);
@@ -129,15 +132,14 @@ function buildDiffRows(methods: MethodData[]): DiffRow[] {
     });
 
     if (m.status === 'del') {
-      let delLineNum = 0;
       for (const d of m.diff) {
-        delLineNum++;
+        globalBaseLineNum++;
         rows.push({
           type: 'diffRow',
           method: m.name,
           methodCrit: m.crit,
           label,
-          baseLine: { n: delLineNum, c: d.c, t: 'del', crit: m.crit },
+          baseLine: { n: globalBaseLineNum, c: d.c, t: 'del', crit: m.crit },
           reviewLine: null,
         });
       }
@@ -150,26 +152,26 @@ function buildDiffRows(methods: MethodData[]): DiffRow[] {
     // Split diff lines into base (del/ctx) and review (add/ctx)
     const baseLines: TuiDiffLine[] = [];
     const reviewLines: TuiDiffLine[] = [];
-    let baseLineNum = 0;
-    let reviewLineNum = 0;
 
+    let methodReviewStart = globalReviewLineNum;
     for (const d of m.diff) {
       if (d.t === 'd') {
-        baseLineNum++;
-        baseLines.push({ n: baseLineNum, c: d.c, t: 'del', crit: m.crit * 0.8 });
+        globalBaseLineNum++;
+        baseLines.push({ n: globalBaseLineNum, c: d.c, t: 'del', crit: m.crit * 0.8 });
       } else if (d.t === 'a') {
-        reviewLineNum++;
-        const isSig = m.sigChanged && reviewLineNum <= 2;
+        globalReviewLineNum++;
+        const localIdx = globalReviewLineNum - methodReviewStart;
+        const isSig = m.sigChanged && localIdx <= 2;
         reviewLines.push({
-          n: reviewLineNum, c: d.c, t: 'add',
+          n: globalReviewLineNum, c: d.c, t: 'add',
           crit: isSig ? m.crit : m.crit * 0.6,
           isSig,
         });
       } else {
-        baseLineNum++;
-        reviewLineNum++;
-        baseLines.push({ n: baseLineNum, c: d.c, t: 'ctx' });
-        reviewLines.push({ n: reviewLineNum, c: d.c, t: 'ctx' });
+        globalBaseLineNum++;
+        globalReviewLineNum++;
+        baseLines.push({ n: globalBaseLineNum, c: d.c, t: 'ctx' });
+        reviewLines.push({ n: globalReviewLineNum, c: d.c, t: 'ctx' });
       }
     }
 

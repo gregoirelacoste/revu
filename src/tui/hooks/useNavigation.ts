@@ -94,12 +94,14 @@ function batchFlagSafe(
   return 0;
 }
 
-function emitBatchMsg(count: number, flag: LineFlag, setBatchMsg: (msg: string | null) => void): void {
-  if (count === 0) return;
-  const label = count > 0
-    ? `${count} lines flagged ${flag}`
-    : `${-count} ${flag} flags removed`;
-  setBatchMsg(label);
+function emitBatchMsg(count: number, flag: LineFlag, scope: string, setBatchMsg: (msg: string | null) => void): void {
+  if (count > 0) {
+    setBatchMsg(`${count} lines flagged ${flag} \u00B7 ${scope}`);
+  } else if (count < 0) {
+    setBatchMsg(`${-count} ${flag} flags removed \u00B7 ${scope}`);
+  } else {
+    setBatchMsg(`All lines already flagged \u00B7 ${scope}`);
+  }
 }
 
 function handleTreePanel(
@@ -173,7 +175,7 @@ function handleTreePanel(
     }
 
     const count = batchFlagSafe(keys, flag, context.lineReviews, setters.setLineFlagBatch);
-    emitBatchMsg(count, flag, setters.setBatchMsg);
+    emitBatchMsg(count, flag, item.node.name, setters.setBatchMsg);
     return true;
   }
 
@@ -265,7 +267,7 @@ function handleDiffPanel(
       }
       const keys = getHunkLines(diffRows, headerIdx, selectedFile);
       const count = batchFlagSafe(keys, flag, context.lineReviews, setters.setLineFlagBatch);
-      emitBatchMsg(count, flag, setters.setBatchMsg);
+      emitBatchMsg(count, flag, curRow.method, setters.setBatchMsg);
       return true;
     }
   }
@@ -302,18 +304,13 @@ function handleContextPanel(
   if (input === 'c' || input === 'x' || input === '?') {
     if (ctxIdx < filtered.length) {
       const chunk = filtered[ctxIdx];
-      if (chunk?.fileId) {
+      if (chunk?.fileId && chunk.hunkIndex !== undefined) {
         const fileDiff = diffs.get(chunk.fileId);
         if (fileDiff) {
-          for (let j = 0; j < fileDiff.rows.length; j++) {
-            if (fileDiff.rows[j].type === 'hunkHeader' && fileDiff.rows[j].method === chunk.method) {
-              const flag: LineFlag = input === 'c' ? 'ok' : input === 'x' ? 'bug' : 'question';
-              const keys = getHunkLines(fileDiff.rows, j, chunk.fileId);
-              const count = batchFlagSafe(keys, flag, context.lineReviews, setters.setLineFlagBatch);
-              emitBatchMsg(count, flag, setters.setBatchMsg);
-              break;
-            }
-          }
+          const flag: LineFlag = input === 'c' ? 'ok' : input === 'x' ? 'bug' : 'question';
+          const keys = getHunkLines(fileDiff.rows, chunk.hunkIndex, chunk.fileId);
+          const count = batchFlagSafe(keys, flag, context.lineReviews, setters.setLineFlagBatch);
+          emitBatchMsg(count, flag, chunk.method, setters.setBatchMsg);
         }
       }
     }
@@ -321,30 +318,19 @@ function handleContextPanel(
   }
 
   if (key.return) {
-    const navigateToFile = (fileId: string, hunkMethod?: string) => {
+    const navigateToFile = (fileId: string, hunkIdx?: number) => {
       if (state.selectedFile) setters.historyPush?.({ fileId: state.selectedFile, cursor: state.diffCursor });
       setSelectedFile(fileId);
-      let hunkIdx = 0;
-      if (hunkMethod) {
-        const fileDiff = diffs.get(fileId);
-        if (fileDiff) {
-          for (let j = 0; j < fileDiff.rows.length; j++) {
-            if (fileDiff.rows[j].type === 'hunkHeader' && fileDiff.rows[j].method === hunkMethod) {
-              hunkIdx = j;
-              break;
-            }
-          }
-        }
-      }
-      setDiffCursor(() => hunkIdx);
-      setDiffScroll(() => hunkIdx);
+      const cursor = hunkIdx ?? 0;
+      setDiffCursor(() => cursor);
+      setDiffScroll(() => cursor);
       setPanel(() => 1);
     };
 
     if (ctxIdx < filtered.length) {
       // CHANGES section
       const chunk = filtered[ctxIdx];
-      if (chunk?.fileId && diffs.has(chunk.fileId)) navigateToFile(chunk.fileId, chunk.method);
+      if (chunk?.fileId && diffs.has(chunk.fileId)) navigateToFile(chunk.fileId, chunk.hunkIndex);
     } else if (ctxIdx < filtered.length + allImports.length) {
       // IMPORTS section
       const imp = allImports[ctxIdx - filtered.length];

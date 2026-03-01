@@ -1,7 +1,8 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import { C, critColor, TYPE_ICON } from '../colors.js';
-import type { ContextData, TuiFileDiff } from '../types.js';
+import type { ContextData, TuiFileDiff, ChunkInfo } from '../types.js';
+import type { LineReview } from '../hooks/useReview.js';
 
 interface ContextPanelProps {
   ctx: ContextData | null;
@@ -11,9 +12,29 @@ interface ContextPanelProps {
   minCrit: number;
   diffs: Map<string, TuiFileDiff>;
   fileProgress: Map<string, 'none' | 'partial' | 'complete'>;
+  lineReviews: Map<string, LineReview>;
 }
 
-export function ContextPanel({ ctx, ctxIdx, isActive, width, minCrit, diffs, fileProgress }: ContextPanelProps) {
+function chunkProgress(
+  chunk: ChunkInfo, diffs: Map<string, TuiFileDiff>, lineReviews: Map<string, LineReview>,
+): 'none' | 'partial' | 'complete' {
+  if (!chunk.fileId || chunk.hunkIndex === undefined) return 'none';
+  const diff = diffs.get(chunk.fileId);
+  if (!diff) return 'none';
+  let total = 0, reviewed = 0;
+  for (let j = chunk.hunkIndex + 1; j < diff.rows.length; j++) {
+    if (diff.rows[j].type !== 'diffRow') break;
+    if (diff.rows[j].reviewLine) {
+      total++;
+      if (lineReviews.has(`${chunk.fileId}:${diff.rows[j].reviewLine!.n}`)) reviewed++;
+    }
+  }
+  if (total === 0) return 'none';
+  if (reviewed === total) return 'complete';
+  return reviewed > 0 ? 'partial' : 'none';
+}
+
+export function ContextPanel({ ctx, ctxIdx, isActive, width, minCrit, diffs, fileProgress, lineReviews }: ContextPanelProps) {
   if (!ctx) {
     return <Text color={C.dim}>Hover a file or folder</Text>;
   }
@@ -58,17 +79,20 @@ export function ContextPanel({ ctx, ctxIdx, isActive, width, minCrit, diffs, fil
       </Text>
       {filtered.map((chunk, i) => {
         const isFoc = isActive && i === ctxIdx;
+        const progress = chunkProgress(chunk, diffs, lineReviews);
         return (
           <Box key={i} flexDirection="column">
             <Box>
               <Text color={isFoc ? C.accent : C.dim}>{isFoc ? '\u25B6' : ' '}</Text>
               <Text color={critColor(chunk.crit)} bold>{chunk.crit.toFixed(1)}</Text>
               <Text> </Text>
-              <Text color={isFoc ? C.white : C.bright} bold={isFoc}>
-                {chunk.method.length > width - 10
-                  ? chunk.method.slice(0, width - 11) + '\u2026'
+              <Text color={progress === 'complete' ? C.dim : isFoc ? C.white : C.bright} bold={isFoc}>
+                {chunk.method.length > width - 12
+                  ? chunk.method.slice(0, width - 13) + '\u2026'
                   : chunk.method}
               </Text>
+              {progress === 'complete' && <Text color={C.green}>{' \u2713'}</Text>}
+              {progress === 'partial' && <Text color={C.orange}>{' \u25D0'}</Text>}
             </Box>
             <Text color={C.dim}>{'   '}{chunk.label.length > width - 8
               ? chunk.label.slice(0, width - 9) + '\u2026'

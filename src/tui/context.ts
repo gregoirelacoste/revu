@@ -31,8 +31,9 @@ export function getFileContext(
   if (!diff) return null;
 
   const chunks: ChunkInfo[] = diff.rows
-    .filter(r => r.type === 'hunkHeader')
-    .map(r => ({ file: diff.name, method: r.method, crit: r.methodCrit, label: r.label, fileId }));
+    .map((r, i) => ({ r, i }))
+    .filter(({ r }) => r.type === 'hunkHeader')
+    .map(({ r, i }) => ({ file: diff.name, method: r.method, crit: r.methodCrit, label: r.label, fileId, hunkIndex: i }));
 
   const stats = computeFileReviewStats(fileId, diff, lineReviews);
   const pct = stats.total > 0 ? Math.round((stats.reviewed / stats.total) * 100) : 0;
@@ -94,11 +95,12 @@ export function getFolderContext(
       const fileDiff = diffs.get(file.id);
       if (!fileDiff) continue;
 
-      for (const row of fileDiff.rows) {
+      for (let j = 0; j < fileDiff.rows.length; j++) {
+        const row = fileDiff.rows[j];
         if (row.type === 'hunkHeader') {
           chunks.push({
             file: `${file.name}${file.ext}`, method: row.method,
-            crit: row.methodCrit, label: row.label, fileId: file.id,
+            crit: row.methodCrit, label: row.label, fileId: file.id, hunkIndex: j,
           });
           continue;
         }
@@ -138,11 +140,12 @@ export function getRepoContext(
     const fileDiff = diffs.get(file.id);
     if (!fileDiff) continue;
 
-    for (const row of fileDiff.rows) {
+    for (let j = 0; j < fileDiff.rows.length; j++) {
+      const row = fileDiff.rows[j];
       if (row.type !== 'hunkHeader') continue;
       chunks.push({
         file: `${file.name}${file.ext}`, method: row.method,
-        crit: row.methodCrit, label: row.label, fileId: file.id,
+        crit: row.methodCrit, label: row.label, fileId: file.id, hunkIndex: j,
       });
     }
   }
@@ -197,8 +200,9 @@ export function getLineContext(
       const target = pathToDiff.get(link.toFile);
       const chunks: ChunkInfo[] = target
         ? target.diff.rows
-            .filter(r => r.type === 'hunkHeader')
-            .map(r => ({ file: target.diff.name, method: r.method, crit: r.methodCrit, label: r.label, fileId: target.fileId }))
+            .map((r, i) => ({ r, i }))
+            .filter(({ r }) => r.type === 'hunkHeader')
+            .map(({ r, i }) => ({ file: target.diff.name, method: r.method, crit: r.methodCrit, label: r.label, fileId: target.fileId, hunkIndex: i }))
         : [];
 
       const calledBy: UsedByEntry[] = result.links

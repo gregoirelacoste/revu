@@ -90,6 +90,7 @@ export interface ChunkInfo {
   crit: number;
   label: string;
   fileId?: string;
+  hunkIndex?: number;
 }
 
 export interface ContextData {

@@ -26,17 +26,24 @@ export function StatusBar({ repoCount, stats, sideEffects, width, exportMsg, bat
   const commentStr = stats.comments > 0 ? ` \uD83D\uDCAC ${stats.comments}` : '';
   const sideEffStr = sideEffects > 0 ? ` \u26A1 ${sideEffects}` : '';
   const histStr = (canGoBack || canGoForward) ? ` ${canGoBack ? '\u25C0' : '\u25C1'}${canGoForward ? '\u25B6' : '\u25B7'}` : '';
-  const flashMsg = exportMsg ?? batchMsg;
-  const flashStr = flashMsg ? ` \u2714 ${flashMsg}` : '';
+  const exportStr = exportMsg ? ` \u2714 ${exportMsg}` : '';
+  const batchStr = batchMsg ? ` \u26A1 ${batchMsg}` : '';
   const sep = ' \u2502 ';
-  const usedWidth = repoStr.length + statsStr.length + bugsStr.length + questStr.length + commentStr.length + sideEffStr.length + histStr.length + flashStr.length + sep.length + HINTS.length;
+
+  // Right section: batchMsg replaces hints when active, exportMsg replaces stats
+  const rightSection = batchMsg ? batchStr : HINTS;
+  const leftStats = exportMsg
+    ? exportStr
+    : statsStr + bugsStr + questStr + commentStr + sideEffStr + histStr;
+
+  const usedWidth = repoStr.length + leftStats.length + sep.length + rightSection.length;
   const fillLen = Math.max(0, width - usedWidth);
 
   return (
     <Box height={1} width={width}>
       <Text backgroundColor={C.accent} color="#ffffff">{repoStr}</Text>
-      {flashMsg ? (
-        <Text backgroundColor="#3c3c3c" color={C.green} bold>{flashStr}</Text>
+      {exportMsg ? (
+        <Text backgroundColor="#3c3c3c" color={C.green} bold>{exportStr}</Text>
       ) : (
         <>
           <Text backgroundColor="#3c3c3c" color={C.green}>{statsStr}</Text>
@@ -48,7 +55,11 @@ export function StatusBar({ repoCount, stats, sideEffects, width, exportMsg, bat
         </>
       )}
       <Text backgroundColor="#3c3c3c" color={C.dim}>{sep}</Text>
-      <Text backgroundColor="#3c3c3c" color={C.dim}>{HINTS}</Text>
+      {batchMsg ? (
+        <Text backgroundColor="#3c3c3c" color={C.green} bold>{batchStr}</Text>
+      ) : (
+        <Text backgroundColor="#3c3c3c" color={C.dim}>{HINTS}</Text>
+      )}
       <Text backgroundColor="#3c3c3c" color={C.dim}>{'\u2500'.repeat(fillLen)}</Text>
     </Box>
   );

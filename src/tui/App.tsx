@@ -415,7 +415,7 @@ export function App({ data, rootDir }: AppProps) {
 
         {/* RIGHT: Context */}
         <Border label="CONTEXT" color={panel === 2 ? C.accent : C.border} width={ctxW} height={bodyH}>
-          <ContextPanel ctx={ctx} ctxIdx={ctxIdx} isActive={panel === 2} width={ctxW} minCrit={minCrit} diffs={diffs} fileProgress={fileProgress} />
+          <ContextPanel ctx={ctx} ctxIdx={ctxIdx} isActive={panel === 2} width={ctxW} minCrit={minCrit} diffs={diffs} fileProgress={fileProgress} lineReviews={lineReviews} />
         </Border>
       </Box>
 
