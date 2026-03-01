@@ -4,10 +4,13 @@ import type { FileDiff, DiffHunk, DiffLine } from '../types.js';
 
 const exec = promisify(execFile);
 
-export async function computeDiff(repoPath: string, baseBranch: string): Promise<FileDiff[]> {
+export async function computeDiff(
+  repoPath: string, baseBranch: string, includeWorkingTree = true,
+): Promise<FileDiff[]> {
   try {
+    const diffRef = includeWorkingTree ? baseBranch : `${baseBranch}...HEAD`;
     const { stdout } = await exec(
-      'git', ['diff', `${baseBranch}...HEAD`, '--unified=3', '--no-color'],
+      'git', ['diff', diffRef, '--unified=3', '--no-color'],
       { cwd: repoPath, maxBuffer: 10 * 1024 * 1024 },
     );
     return parseDiff(stdout);

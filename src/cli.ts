@@ -32,5 +32,6 @@ if (exportMode) {
   }
   process.exit(0);
 } else {
-  render(React.createElement(App, { data: result, rootDir: ROOT_DIR }));
+  const rescan = () => scan(ROOT_DIR, BASE_BRANCH);
+  render(React.createElement(App, { initialData: result, rootDir: ROOT_DIR, rescan }));
 }

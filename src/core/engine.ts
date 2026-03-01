@@ -50,7 +50,7 @@ export interface ScanResult {
 
 // ── Main orchestrator ──
 
-export async function scan(rootDir: string, baseBranch = 'develop'): Promise<ScanResult> {
+export async function scan(rootDir: string, baseBranch = 'develop', includeWorkingTree = true): Promise<ScanResult> {
   const config = await loadConfig(rootDir);
   const repos = await scanRepos(rootDir, baseBranch);
   if (repos.length === 0) return { repos: [], links: [], allFiles: [], config };
@@ -60,7 +60,7 @@ export async function scan(rootDir: string, baseBranch = 'develop'): Promise<Sca
 
   for (const repo of repos) {
     try {
-      const result = await processRepo(repo, config.scoring);
+      const result = await processRepo(repo, config.scoring, includeWorkingTree);
       if (!result) continue;
       allParsedFiles.push(...result.parsedFiles);
       repoEntries.push(result.entry);
@@ -87,9 +87,9 @@ export async function scan(rootDir: string, baseBranch = 'develop'): Promise<Sca
 // ── Per-repo processing ──
 
 async function processRepo(
-  repo: RepoInfo, scoring: ScoringConfig,
+  repo: RepoInfo, scoring: ScoringConfig, includeWorkingTree = true,
 ): Promise<{ parsedFiles: ParsedFile[]; entry: RepoEntry } | null> {
-  const diffs = await computeDiff(repo.path, repo.baseBranch);
+  const diffs = await computeDiff(repo.path, repo.baseBranch, includeWorkingTree);
   const parsedFiles = await parseRepoFiles(repo, diffs);
 
   const files: FileEntry[] = [];

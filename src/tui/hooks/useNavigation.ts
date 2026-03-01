@@ -41,6 +41,7 @@ interface NavSetters {
   setShowTutorial: (fn: (v: boolean) => boolean) => void;
   setTutorialPage: (fn: (v: number) => number) => void;
   tutorialPageCount: number;
+  onRescan?: () => void;
   onExport?: () => void;
   onToggleDiffMode?: () => void;
   onToggleAIScoring?: () => void;
@@ -443,6 +444,7 @@ export function useNavigation(
         } else { return; }
       }
 
+      if (input === 'r') { setters.onRescan?.(); return; }
       if (input === 'q') { exit(); return; }
       if (key.tab && key.shift) {
         if (panel === 0) {

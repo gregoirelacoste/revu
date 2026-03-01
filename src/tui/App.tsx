@@ -1,9 +1,11 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { join } from 'node:path';
 import { Box, Text } from 'ink';
 import { C, critColor, FLAG_ICON, FLAG_COLOR } from './colors.js';
 import { useTermSize } from './hooks/useTermSize.js';
 import { useNavigation } from './hooks/useNavigation.js';
 import { useReview } from './hooks/useReview.js';
+import { useFileWatcher } from './hooks/useFileWatcher.js';
 import { useInputMode, type InputMode } from './hooks/useInputMode.js';
 import { useReviewProgress } from './hooks/useReviewProgress.js';
 import { useNavHistory } from './hooks/useNavHistory.js';
@@ -24,15 +26,33 @@ import { rescore } from '../core/engine.js';
 import type { ContextData, DiffMode } from './types.js';
 
 interface AppProps {
-  data: ScanResult;
+  initialData: ScanResult;
   rootDir: string;
+  rescan: () => Promise<ScanResult>;
 }
 
-export function App({ data, rootDir }: AppProps) {
+export function App({ initialData, rootDir, rescan }: AppProps) {
   const size = useTermSize();
+  const [data, setData] = useState(initialData);
 
   // Invalidation counter: force re-computation after rescore mutates data in-place
   const [dataVersion, setDataVersion] = useState(0);
+
+  // File watcher for live reload
+  const repoPaths = useMemo(
+    () => data.repos.map(r => join(rootDir, r.name)),
+    [data.repos.length, rootDir],
+  );
+
+  const handleNewData = useCallback((newData: ScanResult) => {
+    setData(newData);
+    setDataVersion(v => v + 1);
+  }, []);
+
+  const { isScanning, triggerRescan } = useFileWatcher({
+    repoPaths, rescan, onNewData: handleNewData,
+  });
+
   const tree = useMemo(() => buildTree(data), [data, dataVersion]);
   const diffs = useMemo(() => buildFileDiffs(data), [data, dataVersion]);
   const fileToRepo = useMemo(() => {
@@ -180,6 +200,13 @@ export function App({ data, rootDir }: AppProps) {
     }
   }, [flatTree, diffs, selectedFile]);
 
+  // Clear selectedFile if it no longer exists after rescan
+  useEffect(() => {
+    if (!selectedFile) return;
+    const exists = data.repos.some(r => r.files.some(f => f.id === selectedFile));
+    if (!exists) setSelectedFile(null);
+  }, [data, selectedFile]);
+
   // Layout — responsive: active panel gets more space
   const LAYOUT: Record<number, [number, number, number]> = {
     0: [0.30, 0.46, 0.24],  // Explorer focus
@@ -297,7 +324,7 @@ export function App({ data, rootDir }: AppProps) {
   // Navigation — pass activeDiffRows so nav works on the correct array
   useNavigation(
     { panel, treeIdx: safeIdx, selectedFile, diffScroll, diffCursor: safeDiffCursor, ctxIdx, minCrit, collapsed, inputMode, searchQuery, showHelp, showTutorial, tutorialPage, resetPrompt },
-    { setPanel, setTreeIdx, setSelectedFile, setDiffScroll, setDiffCursor, setCtxIdx, setMinCrit, setLineFlag, setLineFlagBatch, setBatchMsg: handleBatchMsg, setCollapsed, setInputMode, setSearchQuery, setShowHelp, setShowTutorial, setTutorialPage, tutorialPageCount: TUTORIAL_PAGE_COUNT, setResetPrompt, onExport: handleExport, onToggleDiffMode: handleToggleDiffMode, onToggleAIScoring: handleToggleAIScoring, onResetReview: handleResetReview, historyPush: history.push, historyGoBack: history.goBack, historyGoForward: history.goForward },
+    { setPanel, setTreeIdx, setSelectedFile, setDiffScroll, setDiffCursor, setCtxIdx, setMinCrit, setLineFlag, setLineFlagBatch, setBatchMsg: handleBatchMsg, setCollapsed, setInputMode, setSearchQuery, setShowHelp, setShowTutorial, setTutorialPage, tutorialPageCount: TUTORIAL_PAGE_COUNT, setResetPrompt, onExport: handleExport, onToggleDiffMode: handleToggleDiffMode, onToggleAIScoring: handleToggleAIScoring, onResetReview: handleResetReview, onRescan: triggerRescan, historyPush: history.push, historyGoBack: history.goBack, historyGoForward: history.goForward },
     { flatTree, diffRows: activeDiffRows, diffs, ctx, bodyH, lineReviews, fileProgress },
   );
 
@@ -485,7 +512,7 @@ export function App({ data, rootDir }: AppProps) {
       {showTutorial && <TutorialOverlay width={size.w} height={bodyH} page={tutorialPage} />}
 
       {/* Status bar */}
-      <StatusBar repoCount={data.repos.length} stats={globalStats} sideEffects={sideEffectCount} width={size.w} exportMsg={exportMsg} batchMsg={batchMsg} canGoBack={history.canGoBack} canGoForward={history.canGoForward} aiScoring={aiScoringActive} stale={stale} />
+      <StatusBar repoCount={data.repos.length} stats={globalStats} sideEffects={sideEffectCount} width={size.w} exportMsg={exportMsg} batchMsg={batchMsg} canGoBack={history.canGoBack} canGoForward={history.canGoForward} aiScoring={aiScoringActive} stale={stale} isScanning={isScanning} />
     </Box>
   );
 }

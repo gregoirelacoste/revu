@@ -14,11 +14,12 @@ interface StatusBarProps {
   canGoForward?: boolean;
   aiScoring?: boolean;
   stale?: boolean;
+  isScanning?: boolean;
 }
 
-const HINTS = 'Tab:\u21E5 \u2191\u2193:nav {/}:hunk c:ok x:bug ?:flag s:mode [/]:crit /:search n:next h:help q:quit';
+const HINTS = 'Tab:\u21E5 \u2191\u2193:nav {/}:hunk c:ok x:bug ?:flag s:mode [/]:crit /:search n:next r:reload h:help q:quit';
 
-export function StatusBar({ repoCount, stats, sideEffects, width, exportMsg, batchMsg, canGoBack, canGoForward, aiScoring, stale }: StatusBarProps) {
+export function StatusBar({ repoCount, stats, sideEffects, width, exportMsg, batchMsg, canGoBack, canGoForward, aiScoring, stale, isScanning }: StatusBarProps) {
   const pct = stats.total > 0 ? Math.round((stats.reviewed / stats.total) * 100) : 0;
 
   const repoStr = ` ${repoCount} repo(s) `;
@@ -31,6 +32,7 @@ export function StatusBar({ repoCount, stats, sideEffects, width, exportMsg, bat
   const exportStr = exportMsg ? ` \u2714 ${exportMsg}` : '';
   const batchStr = batchMsg ? ` \u26A1 ${batchMsg}` : '';
   const aiStr = aiScoring ? ' [AI]' : '';
+  const liveStr = isScanning ? ' scanning\u2026' : ' [LIVE]';
   const staleStr = stale ? ' \u26A0stale' : '';
   const sep = ' \u2502 ';
 
@@ -38,7 +40,7 @@ export function StatusBar({ repoCount, stats, sideEffects, width, exportMsg, bat
   const rightSection = batchMsg ? batchStr : HINTS;
   const leftStats = exportMsg
     ? exportStr
-    : statsStr + bugsStr + questStr + commentStr + sideEffStr + histStr + aiStr + staleStr;
+    : statsStr + bugsStr + questStr + commentStr + sideEffStr + histStr + aiStr + liveStr + staleStr;
 
   const usedWidth = repoStr.length + leftStats.length + sep.length + rightSection.length;
   const fillLen = Math.max(0, width - usedWidth);
@@ -57,6 +59,7 @@ export function StatusBar({ repoCount, stats, sideEffects, width, exportMsg, bat
           {sideEffects > 0 && <Text backgroundColor="#3c3c3c" color={C.orange}>{sideEffStr}</Text>}
           {(canGoBack || canGoForward) && <Text backgroundColor="#3c3c3c" color={C.cyan}>{histStr}</Text>}
           {aiScoring && <Text backgroundColor="#3c3c3c" color={C.cyan} bold>{aiStr}</Text>}
+          <Text backgroundColor="#3c3c3c" color={isScanning ? C.cyan : C.green}>{liveStr}</Text>
           {stale && <Text backgroundColor="#3c3c3c" color={C.orange}>{staleStr}</Text>}
         </>
       )}
