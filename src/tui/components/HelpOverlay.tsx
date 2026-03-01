@@ -27,7 +27,7 @@ const SECTIONS: { title: string; keys: [string, string][] }[] = [
       ['Enter', 'Open file in diff panel'],
       ['PgUp / PgDn', 'Page up/down'],
       ['g / G', 'Jump to top/bottom'],
-      ['C (Shift)', 'Batch validate file'],
+      ['c / x / ?', 'Flag file/folder (safe)'],
       ['n', 'Next unreviewed file'],
     ],
   },
@@ -38,9 +38,7 @@ const SECTIONS: { title: string; keys: [string, string][] }[] = [
       ['PgUp / PgDn', 'Page up/down'],
       ['g / G', 'Jump to top/bottom'],
       ['{ / }', 'Previous/next hunk'],
-      ['c', 'Flag line OK'],
-      ['x', 'Flag line bug'],
-      ['?', 'Flag line question'],
+      ['c / x / ?', 'Flag line or hunk'],
       ['n', 'Add comment'],
       ['s', 'Toggle unified/sbs'],
     ],
@@ -50,6 +48,7 @@ const SECTIONS: { title: string; keys: [string, string][] }[] = [
     keys: [
       ['\u2191\u2193', 'Navigate entries'],
       ['Enter', 'Jump to file/method'],
+      ['c / x / ?', 'Flag method (safe)'],
     ],
   },
   {

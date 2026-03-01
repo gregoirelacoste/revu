@@ -282,9 +282,6 @@ export function App({ data, rootDir }: AppProps) {
         )}
       </Box>
 
-      {/* Help overlay */}
-      {showHelp && <HelpOverlay width={size.w} height={bodyH} />}
-
       {/* 3 Panels */}
       <Box flexDirection="row" height={bodyH}>
         {/* LEFT: Explorer */}
@@ -418,6 +415,9 @@ export function App({ data, rootDir }: AppProps) {
           <ContextPanel ctx={ctx} ctxIdx={ctxIdx} isActive={panel === 2} width={ctxW} minCrit={minCrit} diffs={diffs} fileProgress={fileProgress} lineReviews={lineReviews} />
         </Border>
       </Box>
+
+      {/* Help overlay — rendered AFTER panels so it paints on top */}
+      {showHelp && <HelpOverlay width={size.w} height={bodyH} />}
 
       {/* Status bar */}
       <StatusBar repoCount={data.repos.length} stats={globalStats} sideEffects={sideEffectCount} width={size.w} exportMsg={exportMsg} batchMsg={batchMsg} canGoBack={history.canGoBack} canGoForward={history.canGoForward} />
