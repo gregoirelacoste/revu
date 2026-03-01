@@ -21,6 +21,8 @@ interface NavState {
   showTutorial: boolean;
   tutorialPage: number;
   resetPrompt: boolean;
+  showMap: boolean;
+  mapIdx: number;
 }
 
 interface NavSetters {
@@ -41,6 +43,8 @@ interface NavSetters {
   setShowTutorial: (fn: (v: boolean) => boolean) => void;
   setTutorialPage: (fn: (v: number) => number) => void;
   tutorialPageCount: number;
+  setShowMap: (fn: (v: boolean) => boolean) => void;
+  setMapIdx: (fn: (v: number) => number) => void;
   onRescan?: () => void;
   onExport?: () => void;
   onToggleDiffMode?: () => void;
@@ -60,6 +64,7 @@ interface NavContext {
   bodyH: number;
   lineReviews: Map<string, LineReview>;
   fileProgress: Map<string, 'none' | 'partial' | 'complete'>;
+  mapFileIds: string[];
 }
 
 // ── Batch flag helpers ──
@@ -406,6 +411,36 @@ export function useNavigation(
       }
       if (input === 't') { setters.setShowTutorial(v => !v); setters.setTutorialPage(() => 0); return; }
 
+      // Review Map overlay
+      if (state.showMap) {
+        if (input === 'm' || key.escape) { setters.setShowMap(() => false); return; }
+        if (key.upArrow) { setters.setMapIdx(i => Math.max(0, i - 1)); return; }
+        if (key.downArrow) { setters.setMapIdx(i => Math.min(context.mapFileIds.length - 1, i + 1)); return; }
+        if (input === 'n') {
+          const { mapFileIds, fileProgress } = context;
+          let found = -1;
+          for (let j = 1; j <= mapFileIds.length; j++) {
+            const idx = (state.mapIdx + j) % mapFileIds.length;
+            if (fileProgress.get(mapFileIds[idx]) !== 'complete') { found = idx; break; }
+          }
+          if (found >= 0) setters.setMapIdx(() => found);
+          return;
+        }
+        if (key.return) {
+          const fileId = context.mapFileIds[state.mapIdx];
+          if (fileId) {
+            setters.setShowMap(() => false);
+            if (state.selectedFile) setters.historyPush?.({ fileId: state.selectedFile, cursor: state.diffCursor });
+            setters.setSelectedFile(fileId);
+            setters.setDiffScroll(() => 0);
+            setters.setDiffCursor(() => 0);
+            setters.setPanel(() => 1);
+          }
+          return;
+        }
+        return;
+      }
+
       // Reset prompt: r=review, a=ai, A=all, Esc=cancel
       if (state.resetPrompt) {
         if (input === 'r') { setters.onResetReview?.('review'); setters.setBatchMsg('Review flags reset'); setTimeout(() => setters.setBatchMsg(null), 3000); }
@@ -444,6 +479,7 @@ export function useNavigation(
         } else { return; }
       }
 
+      if (input === 'm') { setters.setShowMap(() => true); setters.setMapIdx(() => 0); return; }
       if (input === 'r') { setters.onRescan?.(); return; }
       if (input === 'q') { exit(); return; }
       if (key.tab && key.shift) {

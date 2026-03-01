@@ -17,6 +17,7 @@ const SECTIONS: { title: string; keys: [string, string][] }[] = [
       ['h', 'Toggle this help'],
       ['t', 'Tutorial (guided tour)'],
       ['/', 'Fuzzy search (explorer)'],
+      ['m', 'Review map (minimap)'],
       ['r', 'Reload (manual rescan)'],
     ],
   },

@@ -17,7 +17,7 @@ interface StatusBarProps {
   isScanning?: boolean;
 }
 
-const HINTS = 'Tab:\u21E5 \u2191\u2193:nav {/}:hunk c:ok x:bug ?:flag s:mode [/]:crit /:search n:next r:reload h:help q:quit';
+const HINTS = 'Tab:\u21E5 \u2191\u2193:nav {/}:hunk c:ok x:bug ?:flag s:mode [/]:crit /:search n:next m:map r:reload h:help q:quit';
 
 export function StatusBar({ repoCount, stats, sideEffects, width, exportMsg, batchMsg, canGoBack, canGoForward, aiScoring, stale, isScanning }: StatusBarProps) {
   const pct = stats.total > 0 ? Math.round((stats.reviewed / stats.total) * 100) : 0;
