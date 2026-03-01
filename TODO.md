@@ -1,175 +1,177 @@
-# REVU v2 — Plan de développement
+# REVU v2 — Plan de developpement
 
 ## Etat actuel
 
 Le core pipeline (scan → parse → analyze → score) est complet et stable.
-Le TUI 3 panneaux (Ink) est fonctionnel avec navigation clavier, diff side-by-side, curseur ligne,
-flags review (ok/bug/question), contraste progressif, indicateurs explorer, et review persistence v2.
+Le TUI 3 panneaux (Ink) est fonctionnel avec navigation clavier, diff unified + side-by-side,
+curseur ligne, flags review (ok/bug/question), contraste progressif, indicateurs explorer,
+review persistence v3, live diff reload, et review map.
 
 Lancer : `npm run dev`
 
 ---
 
-## Phase 1 — Bugs & polish (terminée)
+## Phase 1 — Bugs & polish ✅
 
 - [x] Auto-select premier fichier
-- [x] Troncature texte (`…`)
-- [x] Alignement colonnes (score à droite)
-- [x] Numéros de ligne dans le diff
+- [x] Troncature texte
+- [x] Alignement colonnes (score a droite)
+- [x] Numeros de ligne dans le diff
 
----
+## Phase 2 — Fonctionnalites MVP ✅
 
-## Phase 2 — Fonctionnalités MVP (terminée)
-
-- [x] Indicateurs review par fichier (`✓`/`◐`), fichiers reviewés atténués
-- [x] Shift+Tab, curseur de ligne, saut entre hunks (`{`/`}`)
-- [x] Flags `c`/`x`/`?` (toggle), lignes de signature (isSig)
-- [x] Contraste progressif (`critBg`), hunks triés par criticité
+- [x] Indicateurs review par fichier, fichiers reviewes attenues
+- [x] Shift+Tab, curseur de ligne, saut entre hunks
+- [x] Flags c/x/? (toggle), lignes de signature
+- [x] Contraste progressif, hunks tries par criticite
 - [x] Context panel enrichi (file/folder/repo stats, Enter → hunk)
-- [x] Status bar (review stats + hints), composant extrait
+- [x] Status bar (review stats + hints)
 - [x] useReview v2 (line-level flags + comments, JSON v2, debounced save)
 
----
+## Phase 3 — Tests & qualite
 
-## Phase 3 — Filet de sécurité (prochaine)
+- [ ] Installer vitest, script `npm test`
+- [ ] Tests data.ts, file-classifier.ts, context.ts, review-stats.ts, criticality.ts
+- [ ] ESLint minimal
 
-Avant tout refactoring, sécuriser le code existant.
+## Phase 4 — Side-effects detection ✅
 
-### Tests
+- [x] Detection des fichiers impactes via DetectedLink + sigChanged
+- [x] Flag dans l'Explorer
+- [x] Section SIDE-EFFECTS dans Context
+- [x] Compteur dans la StatusBar
 
-- [ ] **Installer vitest** : `devDependencies`, script `npm test`
-- [ ] **Tests data.ts** : `buildTree`, `flattenTree`, `buildFileDiffs` (pure functions, ~5 tests)
-- [ ] **Tests file-classifier.ts** : chaque pattern + edge cases (~8 tests)
-- [ ] **Tests context.ts** : `getFileContext`, `getFolderContext`, `getRepoContext` (~5 tests)
-- [ ] **Tests review-stats.ts** : `computeFileReviewStats`, `computeGlobalReviewStats` (~3 tests)
-- [ ] **Tests criticality.ts** : scoring boundaries, weights (~4 tests)
+## Phase 5 — Export Markdown ✅
 
-### Qualité
+- [x] Alt+E : export AI-ready markdown
+- [x] Format par repo → fichier → hunks avec diff, flags, commentaires
+- [x] Side-effects inclus
+- [x] Stats globales
+- [x] Sortie `.revu/exports/`
 
-- [ ] **ESLint minimal** : `@typescript-eslint`, no-unused-vars, no-explicit-any
-- [ ] **Script `npm run lint`** dans package.json
+## Phase 6 — Unified diff + word diff ✅
 
----
+- [x] Mode unified (defaut) + side-by-side (touche s, min 140 cols)
+- [x] Word-level diff highlighting (tokens changes surlignés)
+- [x] Crit bar dans les hunk headers
 
-## Phase 4 — Side-effects detection
+## Phase 7 — Classifier etendu + UX ✅
 
-Killer feature différenciante de REVU. Le pipeline a déjà tout : `DetectedLink`, `sigChanged`, `enrichWithDependencies`. Il manque la jointure.
+- [x] File classifier etendu (json, yaml, sql, graphql, etc.)
+- [x] TYPE_ICON pour chaque type
+- [x] Touche n : next unreviewed file
+- [x] Batch flagging (fichier/dossier/hunk scope)
 
-- [ ] **Détecter les fichiers impactés** : pour chaque méthode avec `sigChanged=true`, trouver les `DetectedLink` où `toFile` et `methodName` correspondent. Marquer ces fichiers comme impactés (~30 lignes dans engine.ts)
-- [ ] **Flag ⚡ dans l'Explorer** : icône + couleur orange sur les fichiers impactés (TreeRow)
-- [ ] **Section SIDE-EFFECTS dans Context** : quand un fichier impacté est sélectionné, afficher quelle méthode a changé, dans quel fichier source, ancienne vs nouvelle signature
-- [ ] **Compteur dans la StatusBar** : `⚡ N side-effects`
+## Phase 8 — Features interactives ✅
 
----
+- [x] Commentaires inline (touche n dans le diff)
+- [x] Recherche fuzzy (touche /)
+- [x] Navigation historique (Alt+←/→)
+- [x] Mode Ligne dans Context (cross-ref AST + DetectedLinks)
 
-## Phase 5 — Export Markdown
+## Phase 9 — AI scoring + review lifecycle ✅
 
-Rend REVU utilisable dans un workflow réel (PR, collègues, Claude Code).
+- [x] AI scoring override (Alt+A) avec ScoringOverride dans ReviewData
+- [x] Staleness detection (headSha comparison)
+- [x] Reset review (Alt+R → r/a/A/Esc)
+- [x] Tutorial overlay (touche t, 6 pages)
+- [x] HelpOverlay (touche h)
 
-- [ ] **`Alt+E` ou `npx revu --export`** : génère le rapport de review
-- [ ] **Format** : par repo → par fichier (trié par criticité) → hunks avec diff inline, flags, commentaires
-- [ ] **Side-effects inclus** : section dédiée avec fichiers impactés + signatures
-- [ ] **Stats globales** : reviewed/total, bugs, questions, side-effects
-- [ ] **Sortie** : `.revu/exports/{repo}_{branch}_{date}.md`
-- [ ] **Objectif** : collable dans une PR GitHub/GitLab, feedable à Claude Code
+## Phase 10 — Live diff reload ✅
 
----
+- [x] fs.watch recursive sur les repos
+- [x] Debounce 500ms + coalescing
+- [x] Preservation d'etat (selectedFile, curseur, flags)
+- [x] Indicateur [LIVE] / scanning... dans la StatusBar
+- [x] Touche r : reload manuel
 
-## Phase 6 — Unified diff + verticalité
+## Phase 11 — Review Map ✅
 
-Approche **additive** : ajouter le mode unified sans casser le side-by-side existant.
+- [x] Radial mind map (hub & spokes) avec drawCard/drawEdge
+- [x] Dashboard bar (progress, stats, repo/file counts)
+- [x] Navigation touche m, fleches, Enter pour jump
+- [x] Criticite visuelle (couleur + bar) par noeud
 
-### Batch 1 — Unified diff (défaut)
+## Phase 12 — Scoring v2 🔄
 
-- [ ] **Ajouter `unifiedRows: DiffRow[]`** à `TuiFileDiff` : rows séquentiels (`-` old, `+` new, ` ` context) par hunk, pleine largeur. Le `rows` existant (side-by-side) reste intact
-- [ ] **State `viewMode: 'unified' | 'split'`** dans App.tsx, touche `s` pour toggle
-- [ ] **Refactor data.ts** : `buildUnifiedRows()` en plus de `buildDiffRows()`. Les hunks restent triés par criticité desc
-- [ ] **DLine pleine largeur** : en mode unified, une seule `<DLine>` par row, pas de split gauche/droite. Le flag/curseur s'applique sur les lignes `+` et `-`
-- [ ] **App.tsx** : `if (viewMode === 'unified')` rend le nouveau layout, sinon l'ancien
-- [ ] **useNavigation** : adapter `handleDiffPanel` pour que les flags/curseur fonctionnent sur les rows unifiés (line key = `fileId:lineNum`, inchangé)
-- [ ] **Highlight intra-ligne** : sur une paire `-`/`+` consécutive, surligner les mots qui ont changé (word-level diff)
+> Plan detaille : `.claude/plans/phase12-scoring-v2.md`
 
-### Batch 2 — Mode focus
+### Axe 1 — Scoring statistique ✅ (2025-03-01)
 
-- [ ] **State `focusMode: boolean`** (touche `f` pour toggle)
-- [ ] **Panneau actif pleine largeur** : `width = size.w - 4`, les deux autres panneaux masqués
-- [ ] **Tab/Shift+Tab** : changent de panneau comme avant (le panneau cible prend la pleine largeur)
-- [ ] **Status bar** : indicateur du mode focus + quel panneau est actif
+- [x] 3 nouveaux weights : contentRisk, methodRisk, stability
+- [x] content-signals.ts : 10 fonctions pures (regex content, method risk, stability, 5 compound bonuses, 2 attenuations)
+- [x] computeFileCriticalityV2 (3 couches : base × compound × attenuation)
+- [x] computeMethodCriticalityV2 (7 facteurs)
+- [x] engine.ts et rescore() migres vers v2
 
-### Batch 3 — Collapse automatique des hunks
+### Axe 2 — Scoring IA
 
-- [ ] **Hunks sous `minCrit` masqués dans le diff** : filtrer les rows dont `methodCrit < minCrit` au lieu de les afficher dim
-- [ ] **Summary line** : `── 3 hunks hidden (crit < 2.5) ──` cliquable/Enter pour expand
-- [ ] **Curseur adapté** : `diffCursor` indexe les rows filtrés, pas les rows complets
-- [ ] **`[`/`]` met à jour le filtre** : les hunks apparaissent/disparaissent en temps réel
+- [ ] ai-scorer.ts (prompt, appel API, fusion)
+- [ ] Config AI dans .revu/config.json
+- [ ] Integration TUI (indicateur AI, rescore)
+- [ ] training-extractor.ts (extraction tuples depuis reviews)
+- [ ] calibrator.ts (calibration poids depuis feedback humain)
+- [ ] RAG bug index + enrichissement prompt
 
----
+## Phase 13 — Enrichissement du contexte
 
-## Phase 7 — Classifier étendu + UX quick wins
+> Plan detaille : `.claude/plans/phase13-context-enrichment.md`
 
-### Classifier
+- [ ] Afficher ancienne/nouvelle signature quand sigChanged
+- [ ] Path HTTP dans le header de hunk (@Get /users/:id)
+- [ ] Indicateur tested: false dans Explorer et Context
+- [ ] Nombre de callers (usages) dans le header de hunk
+- [ ] Badges decorateurs securite (@UseGuards, @Roles)
+- [ ] Cross-repo sur les liens (DEPENDS ON)
+- [ ] Label (Deleted · unused) + crit des callers dans USED BY
+- [ ] Compteur de methodes formatting-only filtrees
 
-- [ ] **Étendre file-classifier** : `json`, `yaml`, `sql`, `graphql`, `markdown`, `shell`, `docker`, `config`, `xml`, `env`, `migration` (30 min)
-- [ ] **TYPE_ICON pour chaque type** : icône + couleur dans colors.ts
-- [ ] **Fallback `?`** : tout fichier non reconnu garde `?` + `unknown`, apparaît quand même
+## Phase 14 — Workflow & navigation rapide
 
-### Navigation
+> Plan detaille : `.claude/plans/phase14-workflow-navigation.md`
 
-- [ ] **Touche `n`** : jump to next unreviewed file dans l'Explorer (trivial, gros gain UX)
-- [ ] **Touche `N`** : jump to next file with bugs/questions
-- [ ] **Filtrage Explorer** : touche `t` pour filtrer par type de fichier (picker rapide), touche `F` pour filtrer par flag (show only bugs/questions)
-- [ ] **Tri Explorer par criticité** : touche `S` pour toggle tri alphabétique ↔ criticité desc
+- [ ] Escape dans le diff = retour Explorer
+- [ ] N = flag ok + next file (diff panel)
+- [ ] Next unreviewed hunk
+- [ ] Enter sur import = jump au fichier
+- [ ] Scroll exact dans historique (NavPos + scroll)
+- [ ] Nav rapide Review Map (g/G/PageUp/PageDown)
 
-### Feedback
+## Phase 15 — Smart filtering
 
-- [ ] **Error banner** : si le scan échoue partiellement (repo sans branche, fichier illisible), afficher un warning dans la status bar au lieu de stderr silencieux
+> Plan detaille : `.claude/plans/phase15-smart-filtering.md`
 
----
-
-## Phase 8 — Features interactives
-
-- [ ] **Commentaires inline** : touche `m` pour ouvrir un input sous la ligne (ink-text-input)
-- [ ] **Recherche fichier fuzzy** : touche `/` pour chercher par nom (widget input + filter flatTree)
-- [ ] **Alt+B** : sélecteur de branche sur un repo (picker list)
-- [ ] **Mode Ligne dans Context** : quand le curseur est sur un appel, afficher la cible, signature, dépendances (cross-ref AST avec les DetectedLinks)
-
----
-
-## Phase 9 — Config complète
-
-- [ ] **`lineCriticality`** : multiplicateurs par type de ligne (partiellement implémenté)
-- [ ] **`rules.alwaysShow`** : certains changements toujours visibles quel que soit le seuil
-- [ ] **`rules.sideEffectDetection`** : toggle on/off
-- [ ] **`rules.minCritForDisplay`** : seuil par défaut au démarrage
-- [ ] **Historique de navigation** : `Alt+←` / `Alt+→` (back/forward)
-
----
-
-## Phase 10 — Post-MVP (roadmap)
-
-- [ ] Claude Code integration (review automatisée)
-- [ ] Export vers GitHub/GitLab PR comments (API)
-- [ ] Watch mode (refresh auto sur changements git)
-- [ ] Syntax highlighting minimal (comments + strings TS uniquement, ~20 lignes regex)
-- [ ] Support multi-langages (parsers AST au-delà de TypeScript)
+- [ ] Search enrichie avec prefixes (>7, @service, !, ~, *)
+- [ ] minCrit dim dans l'Explorer
+- [ ] minCrit dim dans le diff
+- [ ] Section STABLE DEPS dans Context
 
 ---
 
-## Fichiers clés
+## Fichiers cles
 
-| Fichier | Rôle |
+| Fichier | Role |
 |---------|------|
 | `src/tui/App.tsx` | Root component, wire state + 3 panels + status bar |
 | `src/tui/hooks/useNavigation.ts` | Keyboard input, 3 handlers per-panel |
-| `src/tui/hooks/useReview.ts` | Review persistence v2 (line-level flags + comments) |
-| `src/tui/components/DLine.tsx` | Diff line rendering (contraste, curseur, flags, isSig) |
+| `src/tui/hooks/useReview.ts` | Review persistence v3 (line-level flags + comments) |
+| `src/tui/hooks/useFileWatcher.ts` | Live diff reload (fs.watch + debounce) |
+| `src/tui/components/DLine.tsx` | Diff line rendering (contraste, curseur, flags) |
 | `src/tui/components/TreeRow.tsx` | Explorer row (progress indicators, dim complete) |
 | `src/tui/components/ContextPanel.tsx` | Context panel (chunks, stats, usedBy) |
 | `src/tui/components/StatusBar.tsx` | Status bar (review stats + hints) |
-| `src/tui/context.ts` | Context builders (file/folder/repo) with reviewStats |
-| `src/tui/data.ts` | ScanResult → TUI tree + diff rows (hunks sorted by crit) |
-| `src/tui/review-stats.ts` | Shared review stats computation (DRY) |
+| `src/tui/components/ReviewMapOverlay.tsx` | Radial mind map overlay |
+| `src/tui/map-layout.ts` | 2D grid layout engine for review map |
+| `src/tui/map-data.ts` | ScanResult → map nodes/edges |
+| `src/tui/context.ts` | Context builders (file/folder/repo) |
+| `src/tui/data.ts` | ScanResult → TUI tree + diff rows |
 | `src/tui/colors.ts` | Palette, critColor, critBg, FLAG_ICON/FLAG_COLOR |
 | `src/tui/types.ts` | TUI-specific types |
 | `src/core/engine.ts` | Core scan orchestrator |
-| `src/core/analyzer/file-classifier.ts` | File type detection from path patterns |
+| `src/core/scoring/criticality.ts` | File + method criticality v2 (3-layer) |
+| `src/core/scoring/content-signals.ts` | 10 content-aware signal functions |
+| `src/core/scoring/config.ts` | Config loader + defaults |
+| `src/core/analyzer/diff-extractor.ts` | Method/constant diff builders |
+| `src/core/analyzer/link-detector.ts` | Cross-file dependency detection |
+| `src/core/analyzer/ast-parser.ts` | TypeScript AST extraction |
+| `src/core/analyzer/file-classifier.ts` | File type detection from path |
