@@ -325,13 +325,8 @@ function handleContextPanel(
           r => r.type === 'hunkHeader' && r.method === chunk.method,
         );
         if (targetIdx >= 0) {
-          const visibleH = Math.max(1, context.bodyH - 3);
           setDiffCursor(() => targetIdx);
-          setDiffScroll(s => {
-            if (targetIdx < s) return targetIdx;
-            if (targetIdx >= s + visibleH) return targetIdx - visibleH + 1;
-            return s;
-          });
+          setDiffScroll(() => targetIdx);
         }
       }
     }
