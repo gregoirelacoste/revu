@@ -1,4 +1,5 @@
 import type { ScoringConfig, MethodData, DetectedLink } from '../types.js';
+import type { GraphSignals } from './graph-signals.js';
 import {
   computeContentRisk, computeMethodRisk, computeStabilityRisk,
   computeCompoundSigDep, computeChangePropagation, computeCascadeDepth,
@@ -19,6 +20,7 @@ export interface FileSignals {
   tested: boolean;
   allFiles: Array<{ path: string; type: string; methods: MethodData[] }>;
   links: DetectedLink[];
+  graph?: GraphSignals;
 }
 
 // ── V1 scorer (backward compat, used before link-detection pass) ──
@@ -47,38 +49,59 @@ export function computeFileCriticality(
   return Math.round(raw * 10) / 10;
 }
 
-// ── V2 scorer (3 layers: base + compound bonus + attenuation) ──
+// ── V2 scorer (3 layers: graph base + content/compound bonus + attenuation) ──
 
 export function computeFileCriticalityV2(config: ScoringConfig, s: FileSignals): number {
   const { weights } = config;
   const allMethods = [...s.methods, ...s.constants];
 
-  // Layer 1: 7 base weights (sum = 1.0)
-  const typeWeight = config.fileTypes[s.fileType] ?? 0.4;
-  const changeWeight = Math.min(1.0, (s.additions + s.deletions) / 200);
-  const depWeight = Math.min(1.0, s.dependencyCount / 10);
-  const securityWeight = computeSecurityWeight(config, s.filePath);
+  // Layer 1: Graph-based signals (source of truth) + content signals
+  const g = s.graph;
   const contentRisk = computeContentRisk(allMethods);
-  const methodRisk = computeMethodRisk(s.methods);
   const stability = computeStabilityRisk(s.additions, s.deletions);
 
-  const baseScore = (
-    typeWeight * weights.fileType +
-    changeWeight * weights.changeVolume +
-    depWeight * weights.dependencies +
-    securityWeight * weights.securityContext +
-    contentRisk * weights.contentRisk +
-    methodRisk * weights.methodRisk +
-    stability * weights.stability
-  ) * 10;
+  let baseScore: number;
+  if (g) {
+    // Graph-based scoring (6 signals, graph = 0.75, content = 0.25)
+    baseScore = (
+      g.graphImportance * weights.graphImportance +
+      g.callerCritWeight * weights.callerCritWeight +
+      g.entryProximity * weights.entryProximity +
+      g.exclusivity * weights.exclusivity +
+      contentRisk * weights.contentRisk +
+      stability * weights.stability
+    ) * 10;
+  } else {
+    // Fallback: legacy path-based scoring (no graph available)
+    const typeWeight = config.fileTypes[s.fileType] ?? 0.4;
+    const changeWeight = Math.min(1.0, (s.additions + s.deletions) / 200);
+    const depWeight = Math.min(1.0, s.dependencyCount / 10);
+    const securityWeight = computeSecurityWeight(config, s.filePath);
+    baseScore = (
+      typeWeight * weights.fileType +
+      changeWeight * weights.changeVolume +
+      depWeight * weights.dependencies +
+      securityWeight * weights.securityContext +
+      contentRisk * weights.contentRisk +
+      stability * weights.stability
+    ) * 10;
+  }
 
-  // Layer 2: compound bonuses (0 to +0.85 max)
-  const compoundBonus =
+  // Layer 2: compound bonuses (legacy signals become bonus modifiers)
+  let compoundBonus =
     computeCompoundSigDep(s.methods, s.dependencyCount) +
     computeChangePropagation(s.filePath, s.allFiles, s.links) +
     computeCascadeDepth(s.filePath, s.allFiles, s.links) +
     computeDtoContractChange(s.fileType, s.methods, s.constants) +
     computeExistingEndpointMod(s.fileType, s.methods);
+
+  // Legacy path-based signals as secondary bonus (when graph is active)
+  if (g) {
+    const securityWeight = computeSecurityWeight(config, s.filePath);
+    if (securityWeight > 0) compoundBonus += securityWeight * 0.15;
+    const methodRisk = computeMethodRisk(s.methods);
+    if (methodRisk > 0.3) compoundBonus += methodRisk * 0.10;
+  }
 
   // Layer 3: attenuations
   const fmtDiscount = computeFormattingDiscount(s.methods, s.constants);

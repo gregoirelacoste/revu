@@ -7,6 +7,8 @@ import { computeDiff, getFileAtBranch } from './scanner/diff-parser.js';
 import { classifyFile, isDisplayableFile, isTypeScriptFile } from './analyzer/file-classifier.js';
 import { parseTypeScript } from './analyzer/ast-parser.js';
 import { detectLinks } from './analyzer/link-detector.js';
+import { buildRepoGraph, type RepoGraph } from './analyzer/repo-graph.js';
+import { computeGraphSignals } from './scoring/graph-signals.js';
 import {
   computeFileCriticality, computeMethodCriticality,
   computeFileCriticalityV2, computeMethodCriticalityV2,
@@ -61,9 +63,14 @@ export async function scan(rootDir: string, baseBranch = 'develop', includeWorki
 
   const allParsedFiles: ParsedFile[] = [];
   const repoEntries: RepoEntry[] = [];
+  const repoGraphs = new Map<string, RepoGraph>();
 
   for (const repo of repos) {
     try {
+      // Build full-repo graph (all .ts files, not just diff)
+      const graph = await buildRepoGraph(repo.path).catch(() => null);
+      if (graph) repoGraphs.set(repo.name, graph);
+
       const result = await processRepo(repo, config.scoring, includeWorkingTree);
       if (!result) continue;
       allParsedFiles.push(...result.parsedFiles);
@@ -77,8 +84,8 @@ export async function scan(rootDir: string, baseBranch = 'develop', includeWorki
   const fileCritMap = buildFileCritMap(repoEntries);
   const links = detectLinks(allParsedFiles, fileCritMap);
 
-  // Enrich files with real dependency counts, then recompute criticality (v2)
-  enrichWithDependencies(repoEntries, links, config.scoring);
+  // Enrich files with real dependency counts + graph signals, then recompute criticality
+  enrichWithDependencies(repoEntries, links, config.scoring, repoGraphs);
 
   // Mark methods impacted by signature changes in their dependencies
   if (config.rules.sideEffectDetection) {
@@ -195,10 +202,13 @@ function buildFileCritMap(repos: RepoEntry[]): Map<string, number> {
   return map;
 }
 
-// ── Enrich with real dependency counts ──
+// ── Enrich with real dependency counts + graph signals ──
 
-function enrichWithDependencies(repos: RepoEntry[], links: DetectedLink[], scoring: ScoringConfig): void {
-  // Count how many files depend on each file (inbound links)
+function enrichWithDependencies(
+  repos: RepoEntry[], links: DetectedLink[], scoring: ScoringConfig,
+  repoGraphs: Map<string, RepoGraph>,
+): void {
+  // Count how many files depend on each file (inbound links from diff)
   const depCount = new Map<string, number>();
   for (const link of links) {
     depCount.set(link.toFile, (depCount.get(link.toFile) ?? 0) + 1);
@@ -221,8 +231,10 @@ function enrichWithDependencies(repos: RepoEntry[], links: DetectedLink[], scori
     }
   }
 
-  // First pass: set method usages + recompute file crit with v2
+  // First pass: set method usages + recompute file crit with graph signals
   for (const repo of repos) {
+    const graph = repoGraphs.get(repo.name);
+
     for (const file of repo.files) {
       // Set method usages before file scoring (methodRisk uses usages)
       for (const m of file.methods) {
@@ -242,6 +254,7 @@ function enrichWithDependencies(repos: RepoEntry[], links: DetectedLink[], scori
         tested: file.tested,
         allFiles,
         links,
+        graph: graph ? computeGraphSignals(file.path, graph, scoring) : undefined,
       };
       file.crit = computeFileCriticalityV2(scoring, signals);
     }

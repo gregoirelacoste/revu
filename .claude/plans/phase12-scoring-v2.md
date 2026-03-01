@@ -571,10 +571,10 @@ Raisons :
 
 | Step | Axe | Quoi | Effort | Statut |
 |---|---|---|---|---|
-| 0a | Graph | `repo-graph.ts` — full-repo AST scan | 1h30 | |
-| 0b | Graph | `graph-signals.ts` — 4 signaux graph | 1h | |
-| 0c | Graph | Integration engine.ts + FileSignals | 1h | |
-| 0d | Graph | Reequilibrer poids (graph dominant) | 30 min | |
+| 0a | Graph | `repo-graph.ts` — full-repo AST scan | 1h30 | ✅ 2026-03-01 |
+| 0b | Graph | `graph-signals.ts` — 4 signaux graph | 1h | ✅ 2026-03-01 |
+| 0c | Graph | Integration engine.ts + FileSignals | 1h | ✅ 2026-03-01 |
+| 0d | Graph | Reequilibrer poids (graph dominant) | 30 min | ✅ 2026-03-01 |
 | 1 | Stat | Types + config (3 nouveaux weights) | 30 min | ✅ 2025-03-01 |
 | 2 | Stat | `content-signals.ts` (10 fonctions pures) | 2h | ✅ 2025-03-01 |
 | 3 | Stat | Refactor `criticality.ts` → v2 | 1h | ✅ 2025-03-01 |

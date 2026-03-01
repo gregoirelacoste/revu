@@ -4,13 +4,20 @@ import type { RevuConfig, ScoringConfig } from '../types.js';
 
 const DEFAULT_SCORING: ScoringConfig = {
   weights: {
+    // Graph-based (source of truth, sum = 0.75)
+    graphImportance: 0.25,
+    callerCritWeight: 0.20,
+    entryProximity: 0.20,
+    exclusivity: 0.10,
+    // Content-based (complementary, sum = 0.25)
+    contentRisk: 0.15,
+    stability: 0.10,
+    // Legacy (secondary bonus in compound layer, not part of base sum)
     fileType: 0.20,
     changeVolume: 0.15,
     dependencies: 0.20,
     securityContext: 0.15,
-    contentRisk: 0.15,
     methodRisk: 0.10,
-    stability: 0.05,
   },
   fileTypes: {
     module: 1.0,

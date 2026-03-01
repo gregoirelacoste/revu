@@ -97,13 +97,20 @@ export interface DetectedLink {
 // ── Scoring config (.revu/config.json) ──
 
 export interface ScoringWeights {
+  // Graph-based (source of truth)
+  graphImportance: number;
+  callerCritWeight: number;
+  entryProximity: number;
+  exclusivity: number;
+  // Content-based (complementary)
+  contentRisk: number;
+  stability: number;
+  // Legacy (kept as secondary bonus in compound layer)
   fileType: number;
   changeVolume: number;
   dependencies: number;
   securityContext: number;
-  contentRisk: number;
   methodRisk: number;
-  stability: number;
 }
 
 export interface LineCritMultipliers {
