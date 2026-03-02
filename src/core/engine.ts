@@ -173,10 +173,9 @@ async function buildFileEntry(
   const isTS = isTypeScriptFile(pf.path);
   const oldCode = isTS ? await getFileAtBranch(repo.path, repo.baseBranch, pf.path) : null;
   const oldAst = oldCode ? parseTypeScript(oldCode) : null;
-  const skipFmt = !isTS;
 
   const methods = buildMethodData(pf, diff, oldAst, fileCrit, scoring);
-  const constants = buildConstantData(pf, diff, oldAst, fileCrit, skipFmt);
+  const constants = buildConstantData(pf, diff, oldAst, fileCrit, !isTS);
 
   // Capture changes outside method/constant ranges (imports, decorators, etc.)
   const uncovered = buildUncoveredDiff(pf, diff, fileCrit);
