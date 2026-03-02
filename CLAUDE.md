@@ -36,7 +36,7 @@ The scan engine (`core/engine.ts`) orchestrates the full analysis:
 8. **Criticality Scorer** (`scoring/criticality.ts`) — config-driven weighted scoring (file type, change volume, dependencies, security context), scale 0–10
 9. **Engine** (`engine.ts`) — orchestrates steps 1-8, enriches with real dependency counts post-link-detection, returns `ScanResult`
 
-Review persistence: `review/review-store.ts` — saves/loads JSON to `.revu/reviews/`
+Review persistence: `review/review-store.ts` — saves/loads JSON to `.revu/{branch}/reviews/`
 
 ### Scoring System
 
@@ -101,7 +101,7 @@ Ink ^5.1.0 (React for terminals). 3-panel layout: Explorer / Diff / Context.
 
 ## Review Persistence
 
-- Reviews stored in `.revu/reviews/{repo}_{branch}.json`
+- Reviews stored in `.revu/{branch}/reviews/{repo}.json`
 - ReviewData v3 with `headSha` for staleness detection
 - `ScoringOverride` stored inside ReviewData (not separate file)
 - Branch-scoped: different branches are fully independent

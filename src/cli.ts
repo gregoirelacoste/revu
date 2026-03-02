@@ -6,7 +6,8 @@ import { App } from './tui/App.js';
 import { buildFileDiffs } from './tui/data.js';
 import { loadAllReviews } from './export/load-reviews.js';
 import { exportMarkdown } from './export/markdown-exporter.js';
-import { writeExport } from './export/write-export.js';
+import { writeExport, migrateExports } from './export/write-export.js';
+import { ReviewStore } from './core/review/review-store.js';
 
 const args = process.argv.slice(2);
 const exportMode = args.includes('--export');
@@ -21,6 +22,10 @@ const result = await scan(ROOT_DIR, BASE_BRANCH);
 
 const fileCount = result.repos.reduce((n, r) => n + r.files.length, 0);
 console.log(`\x1b[32m✓\x1b[0m ${result.repos.length} repo(s), ${fileCount} file(s), ${result.links.length} link(s)`);
+
+// Migrate old flat .revu structure → per-branch directories
+await new ReviewStore(ROOT_DIR).migrate();
+await migrateExports(ROOT_DIR);
 
 if (exportMode) {
   const diffs = buildFileDiffs(result);

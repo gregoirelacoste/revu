@@ -151,7 +151,7 @@ const PAGES: TutorialPage[] = [
       { text: 'Navigate with \u2191\u2193, Enter to jump, n for next unreviewed.', color: C.text, indent: 2 },
       { text: '' },
       { text: 'Reviews persist automatically', color: C.green, bold: true },
-      { text: 'Your flags and comments are saved in .revu/reviews/.', color: C.text, indent: 2 },
+      { text: 'Your flags and comments are saved in .revu/{branch}/reviews/.', color: C.text, indent: 2 },
       { text: 'Each branch has its own review state.', color: C.text, indent: 2 },
       { text: '' },
       { text: 'Live reload', color: C.green, bold: true },

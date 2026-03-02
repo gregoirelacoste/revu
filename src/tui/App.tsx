@@ -181,7 +181,7 @@ export function App({ initialData, rootDir, rescan }: AppProps) {
       );
     }
     Promise.all(promises).then(() => {
-      setExportMsg(`Exported ${paths.length} files to .revu/exports/`);
+      setExportMsg(`Exported ${paths.length} files to .revu/{branch}/exports/`);
       setTimeout(() => setExportMsg(null), 3000);
     }).catch(err => {
       setExportMsg(`Export failed: ${err}`);

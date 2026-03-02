@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { ReviewStore } from '../../core/review/review-store.js';
+import { migrateExports } from '../../export/write-export.js';
 import type { ReviewData, Flag, ScoringOverride } from '../../core/types.js';
 import type { ScanResult } from '../../core/engine.js';
 import type { LineFlag, LineComment } from '../types.js';
@@ -36,6 +37,10 @@ export function useReview(rootDir: string, data: ScanResult): UseReviewResult {
     loadedRef.current = true;
 
     (async () => {
+      // Migrate old flat structure → per-branch directories (silent if nothing to migrate)
+      await storeRef.current.migrate();
+      await migrateExports(rootDir);
+
       const merged = new Map<string, LineReview>();
       for (const repo of data.repos) {
         const review = await storeRef.current.load(repo.name, repo.branch);
