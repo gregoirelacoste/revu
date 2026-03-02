@@ -170,11 +170,13 @@ async function buildFileEntry(
   // Initial crit with depCount=0, will be recomputed after link detection
   const fileCrit = computeFileCriticality(scoring, pf.fileType, diff.additions, diff.deletions, 0, pf.path);
 
-  const oldCode = await getFileAtBranch(repo.path, repo.baseBranch, pf.path);
+  const isTS = isTypeScriptFile(pf.path);
+  const oldCode = isTS ? await getFileAtBranch(repo.path, repo.baseBranch, pf.path) : null;
   const oldAst = oldCode ? parseTypeScript(oldCode) : null;
+  const skipFmt = !isTS;
 
   const methods = buildMethodData(pf, diff, oldAst, fileCrit, scoring);
-  const constants = buildConstantData(pf, diff, oldAst, fileCrit);
+  const constants = buildConstantData(pf, diff, oldAst, fileCrit, skipFmt);
 
   // Capture changes outside method/constant ranges (imports, decorators, etc.)
   const uncovered = buildUncoveredDiff(pf, diff, fileCrit);

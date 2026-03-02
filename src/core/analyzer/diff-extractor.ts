@@ -48,10 +48,12 @@ export function buildMethodData(
 
 export function buildConstantData(
   pf: ParsedFile, diff: FileDiff, oldAst: OldAst, fileCrit: number,
+  skipFormattingFilter = false,
 ): MethodData[] {
   const result = pf.constants.map(c => {
     const rawDiff = extractMethodDiff(c.startLine, c.endLine, diff);
-    if (rawDiff.length === 0 || isFormattingOnly(rawDiff)) return null;
+    if (rawDiff.length === 0) return null;
+    if (!skipFormattingFilter && isFormattingOnly(rawDiff)) return null;
     return {
       name: c.name, status: 'new' as MethodStatus,
       crit: Math.round(fileCrit * 0.6 * 10) / 10,
@@ -141,7 +143,7 @@ export function buildUncoveredDiff(
     }
   }
 
-  if (uncovered.length === 0 || isFormattingOnly(uncovered)) return null;
+  if (uncovered.length === 0) return null;
 
   return {
     name: '(imports)',
