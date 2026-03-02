@@ -110,7 +110,7 @@ async function processRepo(
     const diff = diffs.find(d => d.path === pf.path);
     if (!diff) continue;
     const entry = await buildFileEntry(pf, diff, diffs, repo, scoring);
-    files.push(entry);
+    if (entry) files.push(entry);
   }
 
   if (files.length === 0) return null;
@@ -162,7 +162,7 @@ async function parseRepoFiles(repo: RepoInfo, diffs: FileDiff[]): Promise<Parsed
 async function buildFileEntry(
   pf: ParsedFile, diff: FileDiff, diffs: FileDiff[],
   repo: RepoInfo, scoring: ScoringConfig,
-): Promise<FileEntry> {
+): Promise<FileEntry | null> {
   const hasSpec = diffs.some(d =>
     d.path === pf.path.replace(/\.tsx?$/, '.spec.ts') ||
     d.path === pf.path.replace(/\.tsx?$/, '.spec.tsx'),
@@ -181,6 +181,10 @@ async function buildFileEntry(
   // Capture changes outside method/constant ranges (imports, decorators, etc.)
   const uncovered = buildUncoveredDiff(pf, diff, fileCrit);
   if (uncovered) constants.push(uncovered);
+
+  // Skip files where all changes are formatting-only (no reviewable content)
+  const hasContent = [...methods, ...constants].some(m => m.status !== 'unch');
+  if (!hasContent) return null;
 
   return {
     id: `f-${repo.name}-${pf.path.replace(/\//g, '-').replace(/\./g, '_')}`,
