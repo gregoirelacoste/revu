@@ -6,12 +6,11 @@ import type { TuiDiffLine } from '../types.js';
 interface DLineProps {
   line: TuiDiffLine | null;
   width: number;
-  minCrit: number;
   isCursor?: boolean;
   flag?: string;
 }
 
-export function DLine({ line, width, minCrit, isCursor, flag }: DLineProps) {
+export function DLine({ line, width, isCursor, flag }: DLineProps) {
   if (!line) return <Text color={C.dim}>{' '.repeat(Math.max(0, width))}</Text>;
 
   const isAdd = line.t === 'add';

@@ -543,7 +543,7 @@ export function App({ initialData, rootDir, rescan }: AppProps) {
                   return (
                     <Box key={`d${i}`} flexDirection="column">
                       <Box>
-                        <DLine line={line} width={diffW - 6} minCrit={minCrit} isCursor={isCur} flag={flag} />
+                        <DLine line={line} width={diffW - 6} isCursor={isCur} flag={flag} />
                         {isFlaggable ? (
                           <Text color={flag ? (FLAG_COLOR[flag] ?? C.dim) : C.dim}>
                             {flag ? ` ${FLAG_ICON[flag]}` : ' \u25CB'}
@@ -564,11 +564,11 @@ export function App({ initialData, rootDir, rescan }: AppProps) {
                   <Box key={`d${i}`} flexDirection="column">
                     <Box>
                       <Box width={halfDiff}>
-                        <DLine line={row.baseLine ?? null} width={halfDiff} minCrit={minCrit} isCursor={false} />
+                        <DLine line={row.baseLine ?? null} width={halfDiff} isCursor={false} />
                       </Box>
                       <Text color={C.border}>{'\u2502'}</Text>
                       <Box width={halfDiff}>
-                        <DLine line={row.reviewLine ?? null} width={halfDiff - 4} minCrit={minCrit} isCursor={isCur} flag={flag} />
+                        <DLine line={row.reviewLine ?? null} width={halfDiff - 4} isCursor={isCur} flag={flag} />
                       </Box>
                       {row.reviewLine && (row.reviewLine.t === 'add' || row.reviewLine.t === 'del') ? (
                         <Text color={flag ? (FLAG_COLOR[flag] ?? C.dim) : C.dim}>

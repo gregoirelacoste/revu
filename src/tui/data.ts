@@ -123,7 +123,6 @@ function buildDiffRows(methods: MethodData[], lineCrit: LineCritMultipliers): Di
 
   for (const m of methods) {
     const label = methodLabel(m);
-    const hunkStart = rows.length;
     rows.push({
       type: 'hunkHeader',
       method: m.name,
