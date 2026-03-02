@@ -120,36 +120,6 @@ export function computeContentRisk(methods: MethodData[]): number {
   return lineCount > 0 ? Math.min(1, totalWeight / lineCount) : 0;
 }
 
-/** Aggregate method risk profile: status, sigChanged, body size delta. */
-export function computeMethodRisk(methods: MethodData[]): number {
-  if (methods.length === 0) return 0;
-  let total = 0;
-  let active = 0;
-  for (const m of methods) {
-    if (m.status === 'unch') continue;
-    active++;
-    let score = m.status === 'del' ? 0.7 : m.status === 'mod' ? 0.5 : 0.2;
-    if (m.sigChanged && m.status === 'mod') score += 0.3;
-    // Usage amplifier: more callers = more risk
-    const usageAmp = 1 + Math.min(1, m.usages / 10) * 0.5;
-    total += score * usageAmp;
-  }
-  return active > 0 ? Math.min(1, total / active) : 0;
-}
-
-/** Ratio of modifications vs pure additions. Refactoring > feature add. */
-export function computeStabilityRisk(additions: number, deletions: number): number {
-  const total = additions + deletions;
-  if (total === 0) return 0;
-  // Paired add/del = modification (weight 1.0)
-  const mods = Math.min(additions, deletions);
-  // Pure deletions (weight 0.7), pure additions (weight 0.3)
-  const pureDel = deletions - mods;
-  const pureAdd = additions - mods;
-  const weighted = mods * 1.0 + pureDel * 0.7 + pureAdd * 0.3;
-  return Math.min(1, weighted / total);
-}
-
 // ── Couche 2: Compound bonuses ──
 
 /** Bonus when signature changed on a file with many dependants. */
