@@ -187,13 +187,20 @@ function buildDiffRows(methods: MethodData[], lineCrit: LineCritMultipliers): Di
     // Align side-by-side
     const maxLen = Math.max(baseLines.length, reviewLines.length);
     for (let i = 0; i < maxLen; i++) {
+      const base = baseLines[i] ?? null;
+      let review = reviewLines[i] ?? null;
+      // Del-only rows need a reviewLine for flagging (same pattern as m.status === 'del')
+      if (base?.t === 'del' && !review) {
+        globalReviewLineNum++;
+        review = { n: globalReviewLineNum, c: base.c, t: 'del', crit: base.crit };
+      }
       rows.push({
         type: 'diffRow',
         method: m.name,
         methodCrit: m.crit,
         label,
-        baseLine: baseLines[i] ?? null,
-        reviewLine: reviewLines[i] ?? null,
+        baseLine: base,
+        reviewLine: review,
       });
     }
 
