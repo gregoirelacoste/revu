@@ -392,7 +392,7 @@ function renderLightRepo(
 
   // Details: group findings by file+method, extract mini-diffs
   parts.push('', '## Details');
-  const grouped = groupFindingsByMethod(findings, repo, diffs, lineReviews);
+  const grouped = groupFindingsByMethod(findings, repo);
   for (const group of grouped) {
     parts.push('', `### ${group.file} \u00B7 ${group.method} (${group.crit.toFixed(1)})`, '');
     for (const f of group.findings) {
@@ -427,9 +427,7 @@ interface GroupedFinding {
 }
 
 function groupFindingsByMethod(
-  findings: Finding[],
-  repo: RepoEntry, _diffs: Map<string, TuiFileDiff>,
-  _lineReviews: Map<string, LineReview>,
+  findings: Finding[], repo: RepoEntry,
 ): GroupedFinding[] {
   // Group findings by file+method
   const map = new Map<string, GroupedFinding>();
@@ -456,7 +454,7 @@ function groupFindingsByMethod(
     const reviewLines: Array<{ num: number; prefix: string; content: string }> = [];
     let lineNum = 0;
     for (const d of method.diff) {
-      if (d.t === 'a' || d.t === 'c') lineNum++;
+      if (d.t === 'a' || d.t === 'c' || d.t === 'd') lineNum++;
       const prefix = d.t === 'a' ? '+' : d.t === 'd' ? '-' : ' ';
       reviewLines.push({ num: lineNum, prefix, content: d.c });
     }

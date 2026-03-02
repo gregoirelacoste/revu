@@ -1,6 +1,5 @@
 // ── Comment/flag collector for Comments overlay ──
 
-import type { ScanResult } from '../core/engine.js';
 import type { TuiFileDiff, LineFlag, LineComment } from './types.js';
 import type { LineReview } from './hooks/useReview.js';
 
@@ -29,7 +28,6 @@ function mergeFlags(a: LineFlag, b: LineFlag): LineFlag {
 }
 
 export function collectAllComments(
-  _data: ScanResult,
   diffs: Map<string, TuiFileDiff>,
   lineReviews: Map<string, LineReview>,
 ): CommentListData {

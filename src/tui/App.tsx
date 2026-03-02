@@ -104,8 +104,8 @@ export function App({ initialData, rootDir, rescan }: AppProps) {
 
   // Comment data for comments overlay
   const commentData = useMemo(
-    () => showComments ? collectAllComments(data, diffs, lineReviews) : null,
-    [showComments, data, diffs, lineReviews, dataVersion],
+    () => showComments ? collectAllComments(diffs, lineReviews) : null,
+    [showComments, diffs, lineReviews, dataVersion],
   );
 
   // Store original crits to restore when AI scoring is toggled off
