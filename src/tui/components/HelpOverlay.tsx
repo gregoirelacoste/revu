@@ -17,7 +17,7 @@ const SECTIONS: { title: string; keys: [string, string][] }[] = [
       ['h', 'Toggle this help'],
       ['t', 'Tutorial (guided tour)'],
       ['/', 'Fuzzy search (explorer)'],
-      ['m', 'Review map (minimap)'],
+      ['m', 'Feature map'],
       ['r', 'Reload (manual rescan)'],
     ],
   },
@@ -52,6 +52,16 @@ const SECTIONS: { title: string; keys: [string, string][] }[] = [
       ['d', 'Toggle changes/deps zone'],
       ['Enter', 'Jump to file/method'],
       ['c / x / ?', 'Flag method (safe)'],
+    ],
+  },
+  {
+    title: 'MAP',
+    keys: [
+      ['\u2191\u2193', 'Navigate clusters'],
+      ['Enter', 'Expand cluster detail'],
+      ['Esc', 'Back to graph / close'],
+      ['n', 'Next unreviewed'],
+      ['m', 'Close map'],
     ],
   },
   {

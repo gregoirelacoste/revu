@@ -18,6 +18,7 @@ import { StatusBar } from './components/StatusBar.js';
 import { HelpOverlay } from './components/HelpOverlay.js';
 import { TutorialOverlay, TUTORIAL_PAGE_COUNT } from './components/TutorialOverlay.js';
 import { ReviewMapOverlay } from './components/ReviewMapOverlay.js';
+import { buildClusterMapData } from './cluster-data.js';
 import { buildTree, flattenTree, buildFileDiffs, buildUnifiedRows } from './data.js';
 import { getFileContext, getMethodContext, getFolderContext, getRepoContext } from './context.js';
 import { exportMarkdown } from '../export/markdown-exporter.js';
@@ -64,16 +65,6 @@ export function App({ initialData, rootDir, rescan }: AppProps) {
     return map;
   }, [data]);
 
-  // Map file IDs — same ordering as buildMapData nodes (per repo, sorted by crit desc)
-  const mapFileIds = useMemo(() => {
-    const ids: string[] = [];
-    for (const repo of data.repos) {
-      const repoFiles = repo.files.filter(f => diffs.has(f.id)).sort((a, b) => b.crit - a.crit);
-      for (const f of repoFiles) ids.push(f.id);
-    }
-    return ids;
-  }, [data, diffs, dataVersion]);
-
   // State
   const [panel, setPanel] = useState(0);
   const [treeIdx, setTreeIdx] = useState(0);
@@ -97,7 +88,15 @@ export function App({ initialData, rootDir, rescan }: AppProps) {
   const [aiScoringActive, setAiScoringActive] = useState(false);
   const [resetPrompt, setResetPrompt] = useState(false);
   const [showMap, setShowMap] = useState(false);
-  const [mapIdx, setMapIdx] = useState(0);
+  const [mapFocus, setMapFocus] = useState<'graph' | 'detail'>('graph');
+  const [clusterIdx, setClusterIdx] = useState(0);
+  const [fileIdx, setFileIdx] = useState(0);
+
+  // Cluster data for review map
+  const clusterData = useMemo(
+    () => showMap ? buildClusterMapData(data, diffs, lineReviews, fileProgress) : null,
+    [showMap, data, diffs, lineReviews, fileProgress, dataVersion],
+  );
 
   // Store original crits to restore when AI scoring is toggled off
   const originalCrits = useRef<Map<string, { fileCrit: number; methods: Map<string, number> }> | null>(null);
@@ -347,9 +346,9 @@ export function App({ initialData, rootDir, rescan }: AppProps) {
 
   // Navigation — pass activeDiffRows so nav works on the correct array
   useNavigation(
-    { panel, treeIdx: safeIdx, selectedFile, diffScroll, diffCursor: safeDiffCursor, ctxIdx, minCrit, collapsed, inputMode, searchQuery, showHelp, showTutorial, tutorialPage, resetPrompt, showMap, mapIdx },
-    { setPanel, setTreeIdx, setSelectedFile, setDiffScroll, setDiffCursor, setCtxIdx, setMinCrit, setLineFlag, setLineFlagBatch, setBatchMsg: handleBatchMsg, setCollapsed, setInputMode, setSearchQuery, setShowHelp, setShowTutorial, setTutorialPage, tutorialPageCount: TUTORIAL_PAGE_COUNT, setResetPrompt, setShowMap, setMapIdx, onExport: handleExport, onToggleDiffMode: handleToggleDiffMode, onToggleAIScoring: handleToggleAIScoring, onResetReview: handleResetReview, onRescan: triggerRescan, historyPush: history.push, historyGoBack: history.goBack, historyGoForward: history.goForward },
-    { flatTree, diffRows: activeDiffRows, diffs, ctx, bodyH, lineReviews, fileProgress, mapFileIds },
+    { panel, treeIdx: safeIdx, selectedFile, diffScroll, diffCursor: safeDiffCursor, ctxIdx, minCrit, collapsed, inputMode, searchQuery, showHelp, showTutorial, tutorialPage, resetPrompt, showMap, mapFocus, clusterIdx, fileIdx },
+    { setPanel, setTreeIdx, setSelectedFile, setDiffScroll, setDiffCursor, setCtxIdx, setMinCrit, setLineFlag, setLineFlagBatch, setBatchMsg: handleBatchMsg, setCollapsed, setInputMode, setSearchQuery, setShowHelp, setShowTutorial, setTutorialPage, tutorialPageCount: TUTORIAL_PAGE_COUNT, setResetPrompt, setShowMap, setMapFocus, setClusterIdx, setFileIdx, onExport: handleExport, onToggleDiffMode: handleToggleDiffMode, onToggleAIScoring: handleToggleAIScoring, onResetReview: handleResetReview, onRescan: triggerRescan, historyPush: history.push, historyGoBack: history.goBack, historyGoForward: history.goForward },
+    { flatTree, diffRows: activeDiffRows, diffs, ctx, bodyH, lineReviews, fileProgress, clusterData },
   );
 
   // Visible slices
@@ -532,7 +531,7 @@ export function App({ initialData, rootDir, rescan }: AppProps) {
       </Box>
 
       {/* Overlays — rendered AFTER panels so they paint on top */}
-      {showMap && <ReviewMapOverlay data={data} diffs={diffs} lineReviews={lineReviews} fileProgress={fileProgress} stats={globalStats} width={size.w} height={bodyH} mapIdx={mapIdx} />}
+      {showMap && clusterData && <ReviewMapOverlay clusterData={clusterData} stats={globalStats} width={size.w} height={bodyH} clusterIdx={clusterIdx} fileIdx={fileIdx} mapFocus={mapFocus} />}
       {showHelp && <HelpOverlay width={size.w} height={bodyH} />}
       {showTutorial && <TutorialOverlay width={size.w} height={bodyH} page={tutorialPage} />}
 
