@@ -14,9 +14,10 @@ Scoring is **config-driven** via `.revu/config.json` at the project root. Each p
 npm run dev              # tsx watch src/cli.ts .. (auto-reload)
 npm run build            # tsc → dist/
 npm start                # node dist/cli.js [rootDir] [baseBranch]
+npx tsc -p tsconfig.node.json --noEmit  # type-check (use this, not bare tsc)
 ```
 
-No test or lint scripts configured yet.
+No test or lint scripts configured yet. Tests exist (`*.test.ts`) and run via direct `tsx` or `vitest`-style execution.
 
 ## Architecture
 
@@ -66,8 +67,17 @@ Ink ^5.1.0 (React for terminals). 3-panel layout: Explorer / Diff / Context.
 - **types.ts** — TUI-specific types (TreeItem, FlatItem, DiffRow, TuiDiffLine, ContextData)
 - **cluster-data.ts** — clustering algorithm for Feature Map (BFS components, naming, repo layout)
 - **map-layout.ts** — spatial zone layout engine (Cell grid, repo frames, cluster cards, arrows)
-- **components/** — Border, TreeRow, DLine, ContextPanel, HelpOverlay, TutorialOverlay, ReviewMapOverlay
-- **hooks/** — useTermSize, useNavigation, useReview, useInputMode, useReviewProgress, useNavHistory
+- **word-diff.ts** — word-level diff highlighting within changed lines
+- **comment-data.ts** — comment threading and data transforms
+- **review-stats.ts** — review progress statistics computation
+- **components/** — Border, TreeRow, DLine, CommentRows, CommentsOverlay, ContextPanel, StatusBar, HelpOverlay, TutorialOverlay, ReviewMapOverlay
+- **hooks/** — useTermSize, useNavigation, useReview, useInputMode, useReviewProgress, useNavHistory, useFileWatcher
+
+### Export (src/export/)
+
+- **markdown-exporter.ts** — generates AI-ready markdown with findings table, clean diffs, AI section
+- **write-export.ts** — writes markdown to `.revu/{branch}/exports/{suffix}/`, includes `migrateExports()` for old structure
+- **load-reviews.ts** — loads reviews from disk (pure async, no React) for CLI export mode
 
 ### Shared Types
 
@@ -94,23 +104,50 @@ Ink ^5.1.0 (React for terminals). 3-panel layout: Explorer / Diff / Context.
 - `m` — Feature Map (spatial cluster graph, two-level nav: clusters → files)
 - `c/x/?` — Flag as ok/bug/question (line, hunk, file, or folder scope)
 - `n` — Add comment (diff) or next unreviewed file/cluster (explorer/map)
+- `s` — Side-by-side diff mode (requires >=140 cols)
+- `{/}` — Navigate between hunks
+- `/` — Fuzzy search in explorer
 - `Alt+E` — Export AI-ready markdown
 - `Alt+A` — Toggle AI scoring override
 - `Alt+R` — Reset review (r=flags, a=AI, A=all)
+- `Alt+←/→` — Navigation history back/forward
 - `[/]` — Adjust minimum criticality filter
+- `r` — Manual rescan/reload
+
+## .revu Directory Structure
+
+Everything is organized per branch under `.revu/`:
+
+```
+.revu/
+├── config.json                              ← project scoring config
+├── feat-CER-1143/
+│   ├── reviews/
+│   │   ├── certificall-admin.json           ← review data per repo
+│   │   └── certificall-nest.json
+│   └── exports/
+│       ├── comments/                        ← exported comments markdown
+│       └── review/                          ← exported review markdown
+└── hotfix-CER-999/
+    ├── reviews/
+    └── exports/
+```
+
+Auto-migration from old flat structure (`.revu/reviews/{repo}_{branch}.json`) runs silently at startup.
 
 ## Review Persistence
 
 - Reviews stored in `.revu/{branch}/reviews/{repo}.json`
-- ReviewData v3 with `headSha` for staleness detection
+- ReviewData v4 with `headSha` for staleness detection and `scoringContext`
 - `ScoringOverride` stored inside ReviewData (not separate file)
 - Branch-scoped: different branches are fully independent
 - `saveReviews` preserves `createdAt` and `scoringOverride` across saves
+- `useReview` hook loads once on mount (`loadedRef` guard); branch change = restart process
 
 ## Environment
 
 - CLI entry: `src/cli.ts` — takes optional root directory + base branch arguments
 - Product spec v2: `v2/revu-brief-tui-v2.md`
 - POC reference: `v2/POC/revu-tui/`
-- Export: `src/export/markdown-exporter.ts` — AI-ready markdown with findings table
-- Roadmap: `roadmap/` (phases futures + `backlog/` + `terminé/`)
+- Roadmap: `roadmap/` (`backlog/` + `terminé/`)
+- Build config: `tsconfig.node.json` (not base `tsconfig.json`)
