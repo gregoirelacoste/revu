@@ -64,7 +64,9 @@ Ink ^5.1.0 (React for terminals). 3-panel layout: Explorer / Diff / Context.
 - **context.ts** — derives context panel data from current selection (file/folder/repo)
 - **colors.ts** — palette + `critColor()` + `TYPE_ICON` map
 - **types.ts** — TUI-specific types (TreeItem, FlatItem, DiffRow, TuiDiffLine, ContextData)
-- **components/** — Border, TreeRow, DLine, ContextPanel, HelpOverlay, TutorialOverlay
+- **cluster-data.ts** — clustering algorithm for Feature Map (BFS components, naming, repo layout)
+- **map-layout.ts** — spatial zone layout engine (Cell grid, repo frames, cluster cards, arrows)
+- **components/** — Border, TreeRow, DLine, ContextPanel, HelpOverlay, TutorialOverlay, ReviewMapOverlay
 - **hooks/** — useTermSize, useNavigation, useReview, useInputMode, useReviewProgress, useNavHistory
 
 ### Shared Types
@@ -89,8 +91,9 @@ Ink ^5.1.0 (React for terminals). 3-panel layout: Explorer / Diff / Context.
 
 - `t` — Tutorial overlay (paginated guided tour)
 - `h` — Keyboard shortcuts reference
+- `m` — Feature Map (spatial cluster graph, two-level nav: clusters → files)
 - `c/x/?` — Flag as ok/bug/question (line, hunk, file, or folder scope)
-- `n` — Add comment (diff) or next unreviewed file (explorer)
+- `n` — Add comment (diff) or next unreviewed file/cluster (explorer/map)
 - `Alt+E` — Export AI-ready markdown
 - `Alt+A` — Toggle AI scoring override
 - `Alt+R` — Reset review (r=flags, a=AI, A=all)
@@ -110,3 +113,4 @@ Ink ^5.1.0 (React for terminals). 3-panel layout: Explorer / Diff / Context.
 - Product spec v2: `v2/revu-brief-tui-v2.md`
 - POC reference: `v2/POC/revu-tui/`
 - Export: `src/export/markdown-exporter.ts` — AI-ready markdown with findings table
+- Roadmap: `roadmap/` (phases futures + `backlog/` + `terminé/`)
