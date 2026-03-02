@@ -82,6 +82,27 @@ function parseDiff(raw: string): FileDiff[] {
   return files;
 }
 
+const EXCLUDED_PATTERNS = [
+  /node_modules/,
+  /package-lock\.json$/,
+  /yarn\.lock$/,
+  /pnpm-lock\.yaml$/,
+  /\.map$/,
+  /\.min\.(js|css)$/,
+];
+
+const BINARY_EXTENSIONS = new Set([
+  '.png', '.jpg', '.jpeg', '.gif', '.ico', '.svg', '.webp', '.bmp',
+  '.woff', '.woff2', '.ttf', '.eot', '.otf',
+  '.zip', '.tar', '.gz', '.rar', '.7z',
+  '.pdf', '.doc', '.docx', '.xls', '.xlsx',
+  '.exe', '.dll', '.so', '.dylib',
+  '.mp3', '.mp4', '.wav', '.avi', '.mov',
+]);
+
 function isRelevantFile(path: string): boolean {
-  return /\.(ts|tsx|html|scss|css)$/.test(path) && !path.includes('node_modules');
+  if (EXCLUDED_PATTERNS.some(p => p.test(path))) return false;
+  const ext = path.slice(path.lastIndexOf('.')).toLowerCase();
+  if (BINARY_EXTENSIONS.has(ext)) return false;
+  return true;
 }

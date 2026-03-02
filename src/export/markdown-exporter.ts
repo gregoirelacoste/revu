@@ -98,10 +98,8 @@ function collectFindings(
     let globalReviewLineNum = 0;
 
     for (const method of changed.sort((a, b) => b.crit - a.crit || a.name.localeCompare(b.name))) {
-      if (method.status === 'del') continue;
-
       for (const d of method.diff) {
-        if (d.t === 'a' || d.t === 'c') {
+        if (d.t === 'a' || d.t === 'c' || d.t === 'd') {
           globalReviewLineNum++;
           const lr = lineReviews.get(`${file.id}:${globalReviewLineNum}`);
           if (lr && (lr.flag === 'bug' || lr.flag === 'question' || lr.comments.length > 0)) {
@@ -155,17 +153,15 @@ function renderMethod(
   const methodComments: Array<{ flag: string; text: string }> = [];
 
   // Mirror buildDiffRows logic for counter advancement
-  if (method.status !== 'del') {
-    for (const d of method.diff) {
-      if (d.t === 'a' || d.t === 'c') {
-        globalReviewLineNum++;
-        const lr = lineReviews.get(`${fileId}:${globalReviewLineNum}`);
-        if (lr) {
-          if (lr.flag === 'bug') methodFlags.push('BUG');
-          if (lr.flag === 'question') methodFlags.push('?');
-          for (const c of lr.comments) {
-            methodComments.push({ flag: lr.flag, text: c.text });
-          }
+  for (const d of method.diff) {
+    if (d.t === 'a' || d.t === 'c' || d.t === 'd') {
+      globalReviewLineNum++;
+      const lr = lineReviews.get(`${fileId}:${globalReviewLineNum}`);
+      if (lr) {
+        if (lr.flag === 'bug') methodFlags.push('BUG');
+        if (lr.flag === 'question') methodFlags.push('?');
+        for (const c of lr.comments) {
+          methodComments.push({ flag: lr.flag, text: c.text });
         }
       }
     }
@@ -366,6 +362,136 @@ function renderRepo(
   return parts.join('\n');
 }
 
+// ── Light export: compact findings + mini-diffs ──
+
+function renderLightRepo(
+  repo: RepoEntry, diffs: Map<string, TuiFileDiff>, lineReviews: Map<string, LineReview>,
+): string {
+  const globalStats = computeGlobalReviewStats(diffs, lineReviews);
+  const pct = globalStats.total > 0 ? Math.round((globalStats.reviewed / globalStats.total) * 100) : 0;
+
+  const parts: string[] = [
+    `# Review Comments \u2014 ${repo.name}`,
+    '',
+    `- **Branch**: ${repo.branch}`,
+    `- **SHA**: ${repo.headSha}`,
+    `- **Progress**: ${globalStats.reviewed}/${globalStats.total} lines (${pct}%) \u2014 ${globalStats.bugs} bugs, ${globalStats.questions} questions, ${globalStats.comments} comments`,
+  ];
+
+  const findings = collectFindings(repo, diffs, lineReviews);
+  if (findings.length === 0) {
+    parts.push('', 'No findings yet.');
+    return parts.join('\n');
+  }
+
+  // Findings table
+  parts.push('', '## Findings', '', '| # | Type | File | Method | Crit | Comment |', '|---|------|------|--------|------|---------|');
+  for (const f of findings) {
+    parts.push(`| ${f.index} | ${f.type} | ${f.file} | ${f.method} | ${f.crit.toFixed(1)} | ${f.comment} |`);
+  }
+
+  // Details: group findings by file+method, extract mini-diffs
+  parts.push('', '## Details');
+  const grouped = groupFindingsByMethod(findings, repo, diffs, lineReviews);
+  for (const group of grouped) {
+    parts.push('', `### ${group.file} \u00B7 ${group.method} (${group.crit.toFixed(1)})`, '');
+    for (const f of group.findings) {
+      const label = FLAG_LABEL[f.flag] ?? f.flag;
+      parts.push(`> **${label}** : ${f.comment}`);
+    }
+    if (group.miniDiff.length > 0) {
+      parts.push('', '```diff');
+      for (const line of group.miniDiff) parts.push(line);
+      parts.push('```');
+    }
+  }
+
+  // AI prompt
+  parts.push(
+    '', '---', '',
+    'Analyze these findings:',
+    '1. Validate each BUG \u2014 confirm or reject',
+    '2. Answer each Question',
+    '3. Suggest minimal fixes',
+  );
+
+  return parts.join('\n');
+}
+
+interface GroupedFinding {
+  file: string;
+  method: string;
+  crit: number;
+  findings: Array<{ flag: string; comment: string; line: number }>;
+  miniDiff: string[];
+}
+
+function groupFindingsByMethod(
+  findings: Finding[],
+  repo: RepoEntry, _diffs: Map<string, TuiFileDiff>,
+  _lineReviews: Map<string, LineReview>,
+): GroupedFinding[] {
+  // Group findings by file+method
+  const map = new Map<string, GroupedFinding>();
+
+  for (const f of findings) {
+    const key = `${f.file}::${f.method}`;
+    let group = map.get(key);
+    if (!group) {
+      group = { file: f.file, method: f.method, crit: f.crit, findings: [], miniDiff: [] };
+      map.set(key, group);
+    }
+    group.findings.push({ flag: f.type, comment: f.comment, line: f.line });
+  }
+
+  // For each group, extract a mini-diff from method data
+  for (const group of map.values()) {
+    const file = repo.files.find(f => `${f.name}${f.ext}` === group.file);
+    if (!file) continue;
+
+    const method = allMethods(file).find(m => m.name === group.method);
+    if (!method || method.status === 'del' || method.diff.length === 0) continue;
+
+    // Build reviewable lines with their global line numbers
+    const reviewLines: Array<{ num: number; prefix: string; content: string }> = [];
+    let lineNum = 0;
+    for (const d of method.diff) {
+      if (d.t === 'a' || d.t === 'c') lineNum++;
+      const prefix = d.t === 'a' ? '+' : d.t === 'd' ? '-' : ' ';
+      reviewLines.push({ num: lineNum, prefix, content: d.c });
+    }
+
+    // Find flagged line indices and extract context window
+    const flaggedNums = new Set(group.findings.map(f => f.line));
+    const includedIndices = new Set<number>();
+    const CTX = 2;
+    for (let i = 0; i < reviewLines.length; i++) {
+      if (flaggedNums.has(reviewLines[i].num) && reviewLines[i].prefix !== ' ') {
+        for (let j = Math.max(0, i - CTX); j <= Math.min(reviewLines.length - 1, i + CTX); j++) {
+          includedIndices.add(j);
+        }
+      }
+    }
+
+    if (includedIndices.size === 0) {
+      // Fallback: include first few lines
+      for (let i = 0; i < Math.min(5, reviewLines.length); i++) includedIndices.add(i);
+    }
+
+    const sorted = [...includedIndices].sort((a, b) => a - b);
+    let prevIdx = -2;
+    for (const idx of sorted) {
+      if (idx > prevIdx + 1 && prevIdx >= 0) group.miniDiff.push('  ...');
+      const rl = reviewLines[idx];
+      const marker = flaggedNums.has(rl.num) && rl.prefix === '+' ? '  // \u2190 flagged' : '';
+      group.miniDiff.push(`${rl.prefix} ${rl.content}${marker}`);
+      prevIdx = idx;
+    }
+  }
+
+  return [...map.values()];
+}
+
 // ── Public API ──
 
 export function exportMarkdown(
@@ -374,6 +500,17 @@ export function exportMarkdown(
   const output = new Map<string, { markdown: string; branch: string }>();
   for (const repo of result.repos) {
     const md = renderRepo(repo, diffs, lineReviews, result.config, result.scoringContext);
+    output.set(repo.name, { markdown: md, branch: repo.branch });
+  }
+  return output;
+}
+
+export function exportLightMarkdown(
+  result: ScanResult, diffs: Map<string, TuiFileDiff>, lineReviews: Map<string, LineReview>,
+): Map<string, { markdown: string; branch: string }> {
+  const output = new Map<string, { markdown: string; branch: string }>();
+  for (const repo of result.repos) {
+    const md = renderLightRepo(repo, diffs, lineReviews);
     output.set(repo.name, { markdown: md, branch: repo.branch });
   }
   return output;

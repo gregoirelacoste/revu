@@ -18,10 +18,12 @@ import { StatusBar } from './components/StatusBar.js';
 import { HelpOverlay } from './components/HelpOverlay.js';
 import { TutorialOverlay, TUTORIAL_PAGE_COUNT } from './components/TutorialOverlay.js';
 import { ReviewMapOverlay } from './components/ReviewMapOverlay.js';
+import { CommentsOverlay } from './components/CommentsOverlay.js';
 import { buildClusterMapData } from './cluster-data.js';
+import { collectAllComments } from './comment-data.js';
 import { buildTree, flattenTree, buildFileDiffs, buildUnifiedRows } from './data.js';
 import { getFileContext, getMethodContext, getFolderContext, getRepoContext } from './context.js';
-import { exportMarkdown } from '../export/markdown-exporter.js';
+import { exportMarkdown, exportLightMarkdown } from '../export/markdown-exporter.js';
 import { writeExport } from '../export/write-export.js';
 import type { ScanResult } from '../core/engine.js';
 import { rescore } from '../core/engine.js';
@@ -91,11 +93,19 @@ export function App({ initialData, rootDir, rescan }: AppProps) {
   const [mapFocus, setMapFocus] = useState<'graph' | 'detail'>('graph');
   const [clusterIdx, setClusterIdx] = useState(0);
   const [fileIdx, setFileIdx] = useState(0);
+  const [showComments, setShowComments] = useState(false);
+  const [commentIdx, setCommentIdx] = useState(0);
 
   // Cluster data for review map
   const clusterData = useMemo(
     () => showMap ? buildClusterMapData(data, diffs, lineReviews, fileProgress) : null,
     [showMap, data, diffs, lineReviews, fileProgress, dataVersion],
+  );
+
+  // Comment data for comments overlay
+  const commentData = useMemo(
+    () => showComments ? collectAllComments(data, diffs, lineReviews) : null,
+    [showComments, data, diffs, lineReviews, dataVersion],
   );
 
   // Store original crits to restore when AI scoring is toggled off
@@ -156,16 +166,22 @@ export function App({ initialData, rootDir, rescan }: AppProps) {
   }, [resetReview]);
 
   const handleExport = useCallback(() => {
-    const exported = exportMarkdown(data, diffs, lineReviews);
+    const full = exportMarkdown(data, diffs, lineReviews);
+    const light = exportLightMarkdown(data, diffs, lineReviews);
     const paths: string[] = [];
     const promises: Promise<void>[] = [];
-    for (const [repoName, { markdown, branch }] of exported) {
+    for (const [repoName, { markdown, branch }] of full) {
       promises.push(
-        writeExport(rootDir, repoName, branch, markdown).then(p => { paths.push(p); }),
+        writeExport(rootDir, repoName, branch, markdown, 'review').then(p => { paths.push(p); }),
+      );
+    }
+    for (const [repoName, { markdown, branch }] of light) {
+      promises.push(
+        writeExport(rootDir, repoName, branch, markdown, 'comments').then(p => { paths.push(p); }),
       );
     }
     Promise.all(promises).then(() => {
-      setExportMsg(`Exported to ${paths.join(', ')}`);
+      setExportMsg(`Exported ${paths.length} files to .revu/exports/`);
       setTimeout(() => setExportMsg(null), 3000);
     }).catch(err => {
       setExportMsg(`Export failed: ${err}`);
@@ -341,14 +357,43 @@ export function App({ initialData, rootDir, rescan }: AppProps) {
     if (idx >= 0) setCtxIdx(idx);
   }, [panel, safeDiffCursor, activeDiffRows, ctx, minCrit]);
 
+  // Propagate progress to folders/repos — use fully expanded tree (ignoring collapsed state)
+  const expandedFlatTree = useMemo(() => flattenTree(tree, new Set()), [tree]);
+  const folderProgress = useMemo(() => {
+    const map = new Map<string, 'none' | 'partial' | 'complete'>();
+    for (let i = 0; i < expandedFlatTree.length; i++) {
+      const item = expandedFlatTree[i];
+      if (!item.isFolder) continue;
+      let hasFiles = false;
+      let allComplete = true;
+      let anyReviewed = false;
+      for (let j = i + 1; j < expandedFlatTree.length; j++) {
+        if (expandedFlatTree[j].depth <= item.depth) break;
+        if (expandedFlatTree[j].isFolder) continue;
+        const fid = expandedFlatTree[j].node.id;
+        if (!fid || !diffs.has(fid)) continue;
+        hasFiles = true;
+        const fp = fileProgress.get(fid);
+        if (fp === 'complete') anyReviewed = true;
+        else if (fp === 'partial') { allComplete = false; anyReviewed = true; }
+        else { allComplete = false; }
+      }
+      if (!hasFiles) continue;
+      if (allComplete) map.set(item.id, 'complete');
+      else if (anyReviewed) map.set(item.id, 'partial');
+      else map.set(item.id, 'none');
+    }
+    return map;
+  }, [expandedFlatTree, fileProgress, diffs]);
+
   const branches = data.repos.map(r => r.branch).filter(b => b !== 'develop' && b !== 'main');
   const branchLabel = branches[0] ?? 'HEAD';
 
   // Navigation — pass activeDiffRows so nav works on the correct array
   useNavigation(
-    { panel, treeIdx: safeIdx, selectedFile, diffScroll, diffCursor: safeDiffCursor, ctxIdx, minCrit, collapsed, inputMode, searchQuery, showHelp, showTutorial, tutorialPage, resetPrompt, showMap, mapFocus, clusterIdx, fileIdx },
-    { setPanel, setTreeIdx, setSelectedFile, setDiffScroll, setDiffCursor, setCtxIdx, setMinCrit, setLineFlag, setLineFlagBatch, setBatchMsg: handleBatchMsg, setCollapsed, setInputMode, setSearchQuery, setShowHelp, setShowTutorial, setTutorialPage, tutorialPageCount: TUTORIAL_PAGE_COUNT, setResetPrompt, setShowMap, setMapFocus, setClusterIdx, setFileIdx, onExport: handleExport, onToggleDiffMode: handleToggleDiffMode, onToggleAIScoring: handleToggleAIScoring, onResetReview: handleResetReview, onRescan: triggerRescan, historyPush: history.push, historyGoBack: history.goBack, historyGoForward: history.goForward },
-    { flatTree, diffRows: activeDiffRows, diffs, ctx, bodyH, lineReviews, fileProgress, clusterData },
+    { panel, treeIdx: safeIdx, selectedFile, diffScroll, diffCursor: safeDiffCursor, ctxIdx, minCrit, collapsed, inputMode, searchQuery, showHelp, showTutorial, tutorialPage, resetPrompt, showMap, mapFocus, clusterIdx, fileIdx, showComments, commentIdx },
+    { setPanel, setTreeIdx, setSelectedFile, setDiffScroll, setDiffCursor, setCtxIdx, setMinCrit, setLineFlag, setLineFlagBatch, setBatchMsg: handleBatchMsg, setCollapsed, setInputMode, setSearchQuery, setShowHelp, setShowTutorial, setTutorialPage, tutorialPageCount: TUTORIAL_PAGE_COUNT, setResetPrompt, setShowMap, setMapFocus, setClusterIdx, setFileIdx, setShowComments, setCommentIdx, onExport: handleExport, onToggleDiffMode: handleToggleDiffMode, onToggleAIScoring: handleToggleAIScoring, onResetReview: handleResetReview, onRescan: triggerRescan, historyPush: history.push, historyGoBack: history.goBack, historyGoForward: history.goForward },
+    { flatTree, diffRows: activeDiffRows, diffs, ctx, bodyH, lineReviews, fileProgress, clusterData, commentData },
   );
 
   // Visible slices
@@ -409,7 +454,7 @@ export function App({ initialData, rootDir, rescan }: AppProps) {
                 isFocused={panel === 0 && (treeScroll + i) === safeIdx}
                 isCollapsed={item.isFolder && collapsed.has(item.id)}
                 width={treeW - 2}
-                progress={item.node.id ? fileProgress.get(item.node.id) : undefined}
+                progress={item.node.id ? fileProgress.get(item.node.id) : folderProgress.get(item.id)}
               />
             ))}
             {flatTree.length > treeVisibleH && (
@@ -466,7 +511,7 @@ export function App({ initialData, rootDir, rescan }: AppProps) {
                 if (effectiveMode === 'unified') {
                   // Unified: single line, full width
                   const line = row.baseLine ?? row.reviewLine ?? null;
-                  const isFlaggable = row.reviewLine && row.reviewLine.t === 'add';
+                  const isFlaggable = row.reviewLine && (row.reviewLine.t === 'add' || row.reviewLine.t === 'del');
                   return (
                     <Box key={`d${i}`} flexDirection="column">
                       <Box>
@@ -532,6 +577,7 @@ export function App({ initialData, rootDir, rescan }: AppProps) {
 
       {/* Overlays — rendered AFTER panels so they paint on top */}
       {showMap && clusterData && <ReviewMapOverlay clusterData={clusterData} stats={globalStats} width={size.w} height={bodyH} clusterIdx={clusterIdx} fileIdx={fileIdx} mapFocus={mapFocus} />}
+      {showComments && commentData && <CommentsOverlay data={commentData} width={size.w} height={bodyH} selectedIdx={commentIdx} />}
       {showHelp && <HelpOverlay width={size.w} height={bodyH} />}
       {showTutorial && <TutorialOverlay width={size.w} height={bodyH} page={tutorialPage} />}
 

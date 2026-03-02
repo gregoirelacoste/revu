@@ -136,14 +136,16 @@ function buildDiffRows(methods: MethodData[], lineCrit: LineCritMultipliers): Di
     if (m.status === 'del') {
       for (const d of m.diff) {
         globalBaseLineNum++;
+        globalReviewLineNum++;
         const lc = classifyLine(d.c, lineCrit);
+        const line: TuiDiffLine = { n: globalReviewLineNum, c: d.c, t: 'del', crit: lc };
         rows.push({
           type: 'diffRow',
           method: m.name,
           methodCrit: m.crit,
           label,
           baseLine: { n: globalBaseLineNum, c: d.c, t: 'del', crit: lc },
-          reviewLine: null,
+          reviewLine: line,
         });
       }
       if (rows.length - hunkStart - 1 >= HUNK_FOOTER_THRESHOLD) {
@@ -243,7 +245,7 @@ export function buildUnifiedRows(rows: DiffRow[]): DiffRow[] {
     if (base && base.t === 'del') {
       pending.dels.push({
         type: 'diffRow', method: row.method, methodCrit: row.methodCrit, label: row.label,
-        baseLine: base, reviewLine: null,
+        baseLine: base, reviewLine: review?.t === 'del' ? review : null,
       });
     }
 

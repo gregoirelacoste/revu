@@ -128,7 +128,11 @@ async function parseRepoFiles(repo: RepoInfo, diffs: FileDiff[]): Promise<Parsed
     if (!isDisplayableFile(fileType)) continue;
 
     const fullPath = join(repo.path, diff.path);
-    const code = await readFile(fullPath, 'utf-8').catch(() => null);
+    let code = await readFile(fullPath, 'utf-8').catch(() => null);
+    if (!code) {
+      // File may be deleted — try reading from base branch
+      code = await getFileAtBranch(repo.path, repo.baseBranch, diff.path);
+    }
     if (!code) {
       console.warn(`\x1b[33m⚠\x1b[0m Cannot read ${diff.path}, skipping`);
       continue;

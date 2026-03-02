@@ -6,6 +6,7 @@ import type { LineReview } from './useReview.js';
 import type { InputMode } from './useInputMode.js';
 import type { NavPos } from './useNavHistory.js';
 import type { ClusterMapData } from '../cluster-data.js';
+import type { CommentListData } from '../comment-data.js';
 
 interface NavState {
   panel: number;
@@ -26,6 +27,8 @@ interface NavState {
   mapFocus: 'graph' | 'detail';
   clusterIdx: number;
   fileIdx: number;
+  showComments: boolean;
+  commentIdx: number;
 }
 
 interface NavSetters {
@@ -50,6 +53,8 @@ interface NavSetters {
   setMapFocus: (v: 'graph' | 'detail') => void;
   setClusterIdx: (fn: (v: number) => number) => void;
   setFileIdx: (fn: (v: number) => number) => void;
+  setShowComments: (fn: (v: boolean) => boolean) => void;
+  setCommentIdx: (fn: (v: number) => number) => void;
   onRescan?: () => void;
   onExport?: () => void;
   onToggleDiffMode?: () => void;
@@ -70,6 +75,7 @@ interface NavContext {
   lineReviews: Map<string, LineReview>;
   fileProgress: Map<string, 'none' | 'partial' | 'complete'>;
   clusterData: ClusterMapData | null;
+  commentData: CommentListData | null;
 }
 
 // ── Batch flag helpers ──
@@ -490,6 +496,28 @@ export function useNavigation(
         return;
       }
 
+      // Comments overlay: l toggles, ↑↓ navigate, Enter jumps, Esc closes
+      if (state.showComments) {
+        const cd = context.commentData;
+        if (input === 'l' || key.escape) { setters.setShowComments(() => false); return; }
+        if (!cd || cd.entries.length === 0) return;
+        if (key.upArrow) { setters.setCommentIdx(i => Math.max(0, i - 1)); return; }
+        if (key.downArrow) { setters.setCommentIdx(i => Math.min(cd.entries.length - 1, i + 1)); return; }
+        if (key.return) {
+          const entry = cd.entries[state.commentIdx];
+          if (entry) {
+            setters.setShowComments(() => false);
+            if (state.selectedFile) setters.historyPush?.({ fileId: state.selectedFile, cursor: state.diffCursor });
+            setters.setSelectedFile(entry.fileId);
+            setters.setDiffCursor(() => entry.diffRowIdx);
+            setters.setDiffScroll(() => Math.max(0, entry.diffRowIdx - Math.floor(context.bodyH / 2)));
+            setters.setPanel(() => 1);
+          }
+          return;
+        }
+        return;
+      }
+
       // Reset prompt: r=review, a=ai, A=all, Esc=cancel
       if (state.resetPrompt) {
         if (input === 'r') { setters.onResetReview?.('review'); setters.setBatchMsg('Review flags reset'); setTimeout(() => setters.setBatchMsg(null), 3000); }
@@ -529,6 +557,7 @@ export function useNavigation(
       }
 
       if (input === 'm') { setters.setShowMap(() => true); setters.setMapFocus('graph'); setters.setClusterIdx(() => 0); setters.setFileIdx(() => 0); return; }
+      if (input === 'l') { setters.setShowComments(() => true); setters.setCommentIdx(() => 0); return; }
       if (input === 'r') { setters.onRescan?.(); return; }
       if (input === 'q') { exit(); return; }
       if (key.tab && key.shift) {
