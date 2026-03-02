@@ -520,25 +520,12 @@ export function App({ initialData, rootDir, rescan }: AppProps) {
                   const isCur = panel === 1 && rowIndex === safeDiffCursor;
                   return (
                     <Box key={`h${i}`}>
-                      <Text color={isCur ? C.accent : hc} bold>{isCur ? '\u25B6' : '\u2500'}{'\u2500'}</Text>
-                      <Text color={hc} bold> {row.method} </Text>
-                      <Text color={C.dim}>({row.label})</Text>
-                      <Text> </Text>
+                      <Text color={isCur ? C.accent : C.dim}>{isCur ? '\u25B6 ' : '\u2500\u2500 '}</Text>
+                      <Text color={hc} bold>{row.label}</Text>
+                      <Text color={C.dim}> · </Text>
+                      <Text color={C.bright}>{row.method}</Text>
+                      <Text color={C.dim}> · </Text>
                       <Text color={hc} bold>{row.methodCrit.toFixed(1)}</Text>
-                    </Box>
-                  );
-                }
-
-                if (row.type === 'hunkFooter') {
-                  const hc = critColor(row.methodCrit);
-                  const isCur = panel === 1 && rowIndex === safeDiffCursor;
-                  return (
-                    <Box key={`f${i}`}>
-                      <Text color={isCur ? C.accent : C.dim}>{isCur ? '\u25B6' : '\u2500'}</Text>
-                      <Text color={C.dim}>{'\u2500 '}</Text>
-                      <Text color={C.dim}>{row.method} </Text>
-                      <Text color={hc}>{row.methodCrit.toFixed(1)}</Text>
-                      <Text color={C.dim}> {'\u2500'.repeat(Math.max(0, diffW - row.method.length - 12))}</Text>
                     </Box>
                   );
                 }

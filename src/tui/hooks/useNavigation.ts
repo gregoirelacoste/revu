@@ -283,17 +283,11 @@ function handleDiffPanel(
 
   const curRow = diffRows[diffCursor];
 
-  // Hunk-level flag: cursor on hunkHeader or hunkFooter
-  if ((curRow?.type === 'hunkHeader' || curRow?.type === 'hunkFooter') && selectedFile) {
+  // Hunk-level flag: cursor on hunkHeader
+  if (curRow?.type === 'hunkHeader' && selectedFile) {
     if (input === 'c' || input === 'x' || input === '?') {
       const flag: LineFlag = input === 'c' ? 'ok' : input === 'x' ? 'bug' : 'question';
-      let headerIdx = diffCursor;
-      if (curRow.type === 'hunkFooter') {
-        for (let j = diffCursor - 1; j >= 0; j--) {
-          if (diffRows[j].type === 'hunkHeader') { headerIdx = j; break; }
-        }
-      }
-      const keys = getHunkLines(diffRows, headerIdx, selectedFile);
+      const keys = getHunkLines(diffRows, diffCursor, selectedFile);
       const count = batchFlagSafe(keys, flag, context.lineReviews, setters.setLineFlagBatch);
       emitBatchMsg(count, flag, curRow.method, setters.setBatchMsg);
       return true;

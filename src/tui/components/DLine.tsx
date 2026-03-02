@@ -18,43 +18,57 @@ export function DLine({ line, width, minCrit, isCursor, flag }: DLineProps) {
   const isDel = line.t === 'del';
   const lineCrit = line.crit ?? 0;
   const isChanged = isAdd || isDel;
-
   const isReviewed = !!flag;
 
-  // Crit bar — hidden when reviewed
-  const bar = !isReviewed && isChanged && lineCrit > 0 ? critBar(lineCrit) : { char: ' ', color: C.dim };
+  // Col 0 (1 char): crit indicator or review dot
+  // Reviewed+changed → faint · (signals "was changed, now reviewed")
+  // Unreviewed+changed → crit bar (risk level)
+  // Context → space
+  const indicator = isReviewed && isChanged
+    ? { char: '\u00B7', color: '#888888' }
+    : isChanged && lineCrit > 0
+      ? critBar(lineCrit)
+      : { char: ' ', color: C.dim };
 
   const prefix = isAdd ? '+' : isDel ? '-' : ' ';
-  // Prefix color — dimmed when reviewed
-  const prefixColor = isReviewed ? C.dim : isAdd ? C.green : isDel ? C.red : C.dim;
-  const textColor = isReviewed
-    ? C.dim
-    : line.isSig
-      ? C.white
-      : isChanged
-        ? C.white
-        : C.dim;
+  const prefixColor = isReviewed ? '#888888' : isAdd ? C.green : isDel ? C.red : C.dim;
+  const textColor = isReviewed ? '#888888' : isChanged ? C.white : C.dim;
 
-  // Cursor prefix
+  // Col 1 (1 char): cursor (▌) or isSig marker (┃) — distinct colors
+  // cursor = accent (blue), isSig = purple → visually different
   const cursorChar = isCursor ? '\u258C' : line.isSig ? '\u2503' : ' ';
-  const cursorColor = isCursor ? C.accent : line.isSig ? C.accent : C.dim;
+  const cursorColor = isCursor ? C.accent : line.isSig ? C.purple : C.dim;
+
+  // Background tint for add/del/isSig when not reviewed
+  // isSig overrides add (blue > green) — structural signal
+  const bg: string | undefined = isReviewed
+    ? undefined
+    : line.isSig
+      ? C.sigBg
+      : isAdd
+        ? C.addBg
+        : isDel
+          ? C.delBg
+          : undefined;
 
   const lineNum = String(line.n).padStart(3, ' ');
   const maxCodeLen = Math.max(10, width - 8);
   const isTruncated = line.c.length > maxCodeLen;
-  const code = isTruncated ? line.c.slice(0, maxCodeLen - 1) + '\u2026' : line.c;
+  // Pad code to fill width so background extends across the full line
+  const rawCode = isTruncated ? line.c.slice(0, maxCodeLen - 1) + '\u2026' : line.c;
+  const code = rawCode.padEnd(maxCodeLen, ' ');
 
   return (
     <Box>
-      <Text color={bar.color}>{bar.char}</Text>
-      <Text color={cursorColor} bold={isCursor || line.isSig}>{cursorChar}</Text>
-      <Text color={C.dim}>{lineNum} </Text>
-      <Text color={prefixColor} bold>{prefix}</Text>
-      <Text> </Text>
+      <Text color={indicator.color} backgroundColor={bg}>{indicator.char}</Text>
+      <Text color={cursorColor} bold={isCursor} backgroundColor={bg}>{cursorChar}</Text>
+      <Text color={C.dim} backgroundColor={bg}>{lineNum} </Text>
+      <Text color={prefixColor} bold backgroundColor={bg}>{prefix}</Text>
+      <Text backgroundColor={bg}> </Text>
       {!isReviewed && line.hiRanges && line.hiRanges.length > 0 ? (
-        renderHighlighted(line.c, line.hiRanges, C.dim, isAdd ? C.green : C.red, maxCodeLen)
+        renderHighlighted(line.c, line.hiRanges, textColor, isAdd ? C.green : C.red, maxCodeLen, bg)
       ) : (
-        <Text color={textColor} bold={!isReviewed && (line.isSig || (isChanged && lineCrit >= 7))} dimColor={isReviewed}>{code}</Text>
+        <Text color={textColor} bold={!isReviewed && line.isSig} backgroundColor={bg}>{code}</Text>
       )}
     </Box>
   );
@@ -66,6 +80,7 @@ function renderHighlighted(
   baseColor: string,
   hiColor: string,
   maxWidth: number,
+  bg: string | undefined,
 ): React.ReactNode {
   const needsTrunc = text.length > maxWidth;
   const clipped = needsTrunc ? text.slice(0, maxWidth - 1) : text;
@@ -74,20 +89,22 @@ function renderHighlighted(
 
   for (const [start, end] of ranges) {
     if (start > pos) {
-      parts.push(<Text key={`b${pos}`} color={baseColor}>{clipped.slice(pos, Math.min(start, clipped.length))}</Text>);
+      parts.push(<Text key={`b${pos}`} color={baseColor} backgroundColor={bg}>{clipped.slice(pos, Math.min(start, clipped.length))}</Text>);
     }
     const hiStart = Math.max(pos, start);
     const hiEnd = Math.min(end, clipped.length);
     if (hiStart < hiEnd) {
-      parts.push(<Text key={`h${hiStart}`} color={hiColor} bold inverse>{clipped.slice(hiStart, hiEnd)}</Text>);
+      parts.push(<Text key={`h${hiStart}`} color={hiColor} bold underline backgroundColor={bg}>{clipped.slice(hiStart, hiEnd)}</Text>);
     }
     pos = end;
   }
   if (pos < clipped.length) {
-    parts.push(<Text key={`e${pos}`} color={baseColor}>{clipped.slice(pos)}</Text>);
+    parts.push(<Text key={`e${pos}`} color={baseColor} backgroundColor={bg}>{clipped.slice(pos)}</Text>);
   }
   if (needsTrunc) {
-    parts.push(<Text key="trunc" color={baseColor}>{'\u2026'}</Text>);
+    parts.push(<Text key="trunc" color={baseColor} backgroundColor={bg}>{'\u2026'}</Text>);
+  } else if (clipped.length < maxWidth) {
+    parts.push(<Text key="pad" backgroundColor={bg}>{' '.repeat(maxWidth - clipped.length)}</Text>);
   }
   return <>{parts}</>;
 }

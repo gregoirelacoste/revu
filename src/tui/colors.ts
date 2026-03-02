@@ -14,6 +14,10 @@ export const C = {
   purple: '#c586c0',
   cyan: '#9cdcfe',
   accent: '#007acc',
+  // Diff line backgrounds
+  addBg: '#1a2e1a',
+  delBg: '#2e1a1a',
+  sigBg: '#1a1a2e',
 } as const;
 
 export const critColor = (v: number): string =>
