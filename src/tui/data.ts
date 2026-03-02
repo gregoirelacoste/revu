@@ -250,9 +250,15 @@ export function buildUnifiedRows(rows: DiffRow[]): DiffRow[] {
 
     // Del-only or del side of a paired row
     if (base && base.t === 'del') {
+      // For mod pairs (del+add): share the add's n so both lines have the same flag key
+      const reviewLine = review?.t === 'del'
+        ? review
+        : review?.t === 'add'
+          ? { ...base, n: review.n }
+          : null;
       pending.dels.push({
         type: 'diffRow', method: row.method, methodCrit: row.methodCrit, label: row.label,
-        baseLine: base, reviewLine: review?.t === 'del' ? review : null,
+        baseLine: base, reviewLine,
       });
     }
 

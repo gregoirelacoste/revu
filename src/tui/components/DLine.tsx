@@ -19,18 +19,21 @@ export function DLine({ line, width, minCrit, isCursor, flag }: DLineProps) {
   const lineCrit = line.crit ?? 0;
   const isChanged = isAdd || isDel;
 
-  // Crit bar
-  const bar = isChanged && lineCrit > 0 ? critBar(lineCrit) : { char: ' ', color: C.dim };
+  const isReviewed = !!flag;
+
+  // Crit bar — hidden when reviewed
+  const bar = !isReviewed && isChanged && lineCrit > 0 ? critBar(lineCrit) : { char: ' ', color: C.dim };
 
   const prefix = isAdd ? '+' : isDel ? '-' : ' ';
-  const prefixColor = isAdd ? C.green : isDel ? C.red : C.dim;
-
-  // Text color based on criticality
-  const textColor = line.isSig
-    ? C.white
-    : isChanged
-      ? lineCrit >= 7 ? C.white : lineCrit >= 5 ? C.bright : lineCrit >= 2.5 ? C.text : C.dim
-      : C.dim;
+  // Prefix color — dimmed when reviewed
+  const prefixColor = isReviewed ? C.dim : isAdd ? C.green : isDel ? C.red : C.dim;
+  const textColor = isReviewed
+    ? C.dim
+    : line.isSig
+      ? C.white
+      : isChanged
+        ? C.white
+        : C.dim;
 
   // Cursor prefix
   const cursorChar = isCursor ? '\u258C' : line.isSig ? '\u2503' : ' ';
@@ -48,10 +51,10 @@ export function DLine({ line, width, minCrit, isCursor, flag }: DLineProps) {
       <Text color={C.dim}>{lineNum} </Text>
       <Text color={prefixColor} bold>{prefix}</Text>
       <Text> </Text>
-      {line.hiRanges && line.hiRanges.length > 0 ? (
+      {!isReviewed && line.hiRanges && line.hiRanges.length > 0 ? (
         renderHighlighted(line.c, line.hiRanges, C.dim, isAdd ? C.green : C.red, maxCodeLen)
       ) : (
-        <Text color={textColor} bold={line.isSig || (isChanged && lineCrit >= 7)}>{code}</Text>
+        <Text color={textColor} bold={!isReviewed && (line.isSig || (isChanged && lineCrit >= 7))} dimColor={isReviewed}>{code}</Text>
       )}
     </Box>
   );

@@ -9,6 +9,7 @@ import { useFileWatcher } from './hooks/useFileWatcher.js';
 import { useInputMode, type InputMode } from './hooks/useInputMode.js';
 import { useReviewProgress } from './hooks/useReviewProgress.js';
 import { useNavHistory } from './hooks/useNavHistory.js';
+import { useMouseScroll } from './hooks/useMouseScroll.js';
 import { Border } from './components/Border.js';
 import { TreeRow } from './components/TreeRow.js';
 import { DLine } from './components/DLine.js';
@@ -25,6 +26,7 @@ import { buildTree, flattenTree, buildFileDiffs, buildUnifiedRows } from './data
 import { getFileContext, getMethodContext, getFolderContext, getRepoContext } from './context.js';
 import { exportMarkdown, exportLightMarkdown } from '../export/markdown-exporter.js';
 import { writeExport } from '../export/write-export.js';
+import { openEditor, ensureNotesFile } from './editor.js';
 import type { ScanResult } from '../core/engine.js';
 import { rescore } from '../core/engine.js';
 import type { ContextData, DiffMode } from './types.js';
@@ -189,6 +191,25 @@ export function App({ initialData, rootDir, rescan }: AppProps) {
     });
   }, [data, diffs, lineReviews, rootDir]);
 
+  const handleOpenEditor = useCallback(() => {
+    if (!selectedFile) return;
+    const repoName = fileToRepo.get(selectedFile);
+    const diff = diffs.get(selectedFile);
+    if (!repoName || !diff) return;
+    const absPath = join(rootDir, repoName, diff.path);
+    openEditor(absPath);
+    setDataVersion(v => v + 1);
+  }, [selectedFile, fileToRepo, diffs, rootDir]);
+
+  const handleOpenNotes = useCallback(() => {
+    const branch = data.repos[0]?.branch;
+    if (!branch) return;
+    ensureNotesFile(rootDir, branch).then(notesPath => {
+      openEditor(notesPath);
+      setDataVersion(v => v + 1);
+    }).catch(() => {});
+  }, [rootDir, data.repos]);
+
   const batchMsgTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleBatchMsg = useCallback((msg: string | null) => {
     if (batchMsgTimer.current) clearTimeout(batchMsgTimer.current);
@@ -347,6 +368,14 @@ export function App({ initialData, rootDir, rescan }: AppProps) {
     return null;
   }, [safeIdx, flatTree, data, diffs, lineReviews, panel, activeFile, currentMethodName]);
 
+  const ctxTotalItems = useMemo(() => {
+    if (!ctx) return 0;
+    const filtered = ctx.chunks.filter(c => c.crit >= minCrit);
+    const imports = ctx.imports ?? [];
+    const usedBy = (ctx.usedBy ?? []).filter(u => u.fileId && diffs.has(u.fileId!));
+    return filtered.length + imports.length + usedBy.length;
+  }, [ctx, minCrit, diffs]);
+
   // Auto-sync ctxIdx with current method when diff panel is active
   useEffect(() => {
     if (panel !== 1 || !ctx) return;
@@ -389,10 +418,22 @@ export function App({ initialData, rootDir, rescan }: AppProps) {
   const branches = data.repos.map(r => r.branch).filter(b => b !== 'develop' && b !== 'main');
   const branchLabel = branches[0] ?? 'HEAD';
 
+  // Mouse scroll — per-panel, disabled when overlays/input are active
+  const mouseDisabled = !!(showHelp || showTutorial || showMap || showComments || resetPrompt || inputMode || searchQuery !== null);
+  useMouseScroll({
+    panelWidths: [treeW, diffW, ctxW],
+    disabled: mouseDisabled,
+    treeMax: Math.max(0, flatTree.length - 1),
+    diffRowCount: activeDiffRows.length,
+    diffViewportH: Math.max(1, bodyH - 3),
+    ctxMax: Math.max(0, ctxTotalItems - 1),
+    setTreeIdx, setDiffScroll, setCtxIdx,
+  });
+
   // Navigation — pass activeDiffRows so nav works on the correct array
   useNavigation(
     { panel, treeIdx: safeIdx, selectedFile, diffScroll, diffCursor: safeDiffCursor, ctxIdx, minCrit, collapsed, inputMode, searchQuery, showHelp, showTutorial, tutorialPage, resetPrompt, showMap, mapFocus, clusterIdx, fileIdx, showComments, commentIdx },
-    { setPanel, setTreeIdx, setSelectedFile, setDiffScroll, setDiffCursor, setCtxIdx, setMinCrit, setLineFlag, setLineFlagBatch, setBatchMsg: handleBatchMsg, setCollapsed, setInputMode, setSearchQuery, setShowHelp, setShowTutorial, setTutorialPage, tutorialPageCount: TUTORIAL_PAGE_COUNT, setResetPrompt, setShowMap, setMapFocus, setClusterIdx, setFileIdx, setShowComments, setCommentIdx, onExport: handleExport, onToggleDiffMode: handleToggleDiffMode, onToggleAIScoring: handleToggleAIScoring, onResetReview: handleResetReview, onRescan: triggerRescan, historyPush: history.push, historyGoBack: history.goBack, historyGoForward: history.goForward },
+    { setPanel, setTreeIdx, setSelectedFile, setDiffScroll, setDiffCursor, setCtxIdx, setMinCrit, setLineFlag, setLineFlagBatch, setBatchMsg: handleBatchMsg, setCollapsed, setInputMode, setSearchQuery, setShowHelp, setShowTutorial, setTutorialPage, tutorialPageCount: TUTORIAL_PAGE_COUNT, setResetPrompt, setShowMap, setMapFocus, setClusterIdx, setFileIdx, setShowComments, setCommentIdx, onExport: handleExport, onOpenEditor: handleOpenEditor, onOpenNotes: handleOpenNotes, onToggleDiffMode: handleToggleDiffMode, onToggleAIScoring: handleToggleAIScoring, onResetReview: handleResetReview, onRescan: triggerRescan, historyPush: history.push, historyGoBack: history.goBack, historyGoForward: history.goForward },
     { flatTree, diffRows: activeDiffRows, diffs, ctx, bodyH, lineReviews, fileProgress, clusterData, commentData },
   );
 

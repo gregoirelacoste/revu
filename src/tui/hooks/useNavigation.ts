@@ -57,6 +57,8 @@ interface NavSetters {
   setCommentIdx: (fn: (v: number) => number) => void;
   onRescan?: () => void;
   onExport?: () => void;
+  onOpenEditor?: () => void;
+  onOpenNotes?: () => void;
   onToggleDiffMode?: () => void;
   onToggleAIScoring?: () => void;
   onResetReview?: (scope: 'review' | 'ai' | 'all') => void;
@@ -581,6 +583,8 @@ export function useNavigation(
       if (key.meta && input === 'e') { setters.onExport?.(); return; }
       if (key.meta && input === 'a') { setters.onToggleAIScoring?.(); return; }
       if (key.meta && input === 'r') { setters.setResetPrompt(true); setters.setBatchMsg('Reset: [r]eview [a]i [A]ll [Esc]cancel'); return; }
+      if (key.meta && input === 'n') { setters.onOpenNotes?.(); return; }
+      if (input === 'e' && panel === 1 && state.selectedFile) { setters.onOpenEditor?.(); return; }
 
       // Fuzzy search: /
       if (input === '/' && panel === 0) { setters.setSearchQuery(''); setters.setTreeIdx(() => 0); return; }
