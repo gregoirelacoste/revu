@@ -7,3 +7,5 @@
 - lorsqu'on a review tous les fichiers d'un dossier, le style du dossier dans la navigation devient grisé (même style que le fichier review)
 - on doit clarifier le mode de fonctionnement de l'AI scoring. l'AI peut aider de deux manière : analyse toutes la feature pour proposer une review map plus pertinente et en deux, proposer un ajustement du scoring grâce à sa compréhension du code
 - clarifier les exports et les fichiers JSON dans .revu, à quoi serve t'il exactement. Pourquoi tout le code de la review est dans le .md, à quel fin ? comment on utilise et pourquoi le .json ? Si je veux faire participer claude cli à ma review pour répondre à mes commentaires en priorité, comment je fais ? je partage l'export ? il y a trop de contenus non ? 
+- pouvoir scoler à la souris, seulement scroller
+- il faut pouvoir retrouver rapidemment la liste des commentaires et leur emplacement (fichier, bloc code, num ligne) dans un listing de tous les coms > dans l'export 
