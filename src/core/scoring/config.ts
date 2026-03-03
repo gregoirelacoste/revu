@@ -75,6 +75,7 @@ const DEFAULT_CONFIG: RevuConfig = {
     sideEffectDetection: true,
     minCritForDisplay: 0,
   },
+  syntax: { enabled: true, theme: 'darcula', rules: {} },
 };
 
 export async function loadConfig(rootDir: string): Promise<RevuConfig> {
@@ -115,5 +116,12 @@ function mergeConfig(base: RevuConfig, user: Partial<RevuConfig>): RevuConfig {
       sideEffectDetection: user.rules?.sideEffectDetection ?? base.rules.sideEffectDetection,
       minCritForDisplay: user.rules?.minCritForDisplay ?? base.rules.minCritForDisplay,
     },
+    syntax: user.syntax
+      ? {
+          enabled: user.syntax.enabled ?? base.syntax!.enabled,
+          theme: user.syntax.theme ?? base.syntax!.theme,
+          rules: { ...base.syntax!.rules, ...user.syntax.rules },
+        }
+      : base.syntax,
   };
 }

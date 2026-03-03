@@ -152,6 +152,12 @@ export interface ScoringConfig {
   lineCriticality: LineCritMultipliers;
 }
 
+export interface SyntaxConfig {
+  enabled: boolean;
+  theme: string;
+  rules: Record<string, string>;
+}
+
 export interface RevuConfig {
   version: number;
   stack: string;
@@ -161,6 +167,7 @@ export interface RevuConfig {
     sideEffectDetection: boolean;
     minCritForDisplay: number;
   };
+  syntax?: SyntaxConfig;
 }
 
 // ── Method/Constant diff data ──

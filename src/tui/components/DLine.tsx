@@ -1,6 +1,7 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import { C, critBar } from '../colors.js';
+import { tokenizeLine, type SyntaxTheme } from '../syntax.js';
 import type { TuiDiffLine } from '../types.js';
 
 interface DLineProps {
@@ -8,9 +9,10 @@ interface DLineProps {
   width: number;
   isCursor?: boolean;
   flag?: string;
+  syntaxTheme?: SyntaxTheme | null;
 }
 
-export function DLine({ line, width, isCursor, flag }: DLineProps) {
+export function DLine({ line, width, isCursor, flag, syntaxTheme }: DLineProps) {
   if (!line) return <Text color={C.dim}>{' '.repeat(Math.max(0, width))}</Text>;
 
   const isAdd = line.t === 'add';
@@ -66,6 +68,8 @@ export function DLine({ line, width, isCursor, flag }: DLineProps) {
       <Text backgroundColor={bg}> </Text>
       {!isReviewed && line.hiRanges && line.hiRanges.length > 0 ? (
         renderHighlighted(line.c, line.hiRanges, textColor, isAdd ? C.green : C.red, maxCodeLen, bg)
+      ) : !isReviewed && syntaxTheme ? (
+        renderSyntax(line.c, maxCodeLen, bg, syntaxTheme, textColor, !!line.isSig)
       ) : (
         <Text color={textColor} bold={!isReviewed && line.isSig} backgroundColor={bg}>{code}</Text>
       )}
@@ -104,6 +108,25 @@ function renderHighlighted(
     parts.push(<Text key="trunc" color={baseColor} backgroundColor={bg}>{'\u2026'}</Text>);
   } else if (clipped.length < maxWidth) {
     parts.push(<Text key="pad" backgroundColor={bg}>{' '.repeat(maxWidth - clipped.length)}</Text>);
+  }
+  return <>{parts}</>;
+}
+
+function renderSyntax(
+  text: string, maxWidth: number, bg: string | undefined,
+  theme: SyntaxTheme, fallback: string, isSig: boolean,
+): React.ReactNode {
+  const needsTrunc = text.length > maxWidth;
+  const clipped = needsTrunc ? text.slice(0, maxWidth - 1) : text;
+  const tokens = tokenizeLine(clipped);
+  const parts: React.ReactNode[] = tokens.map((tok, i) => {
+    const color = theme[tok.type] || fallback;
+    return <Text key={i} color={color} bold={isSig} backgroundColor={bg}>{tok.text}</Text>;
+  });
+  if (needsTrunc) {
+    parts.push(<Text key="t" color={fallback} backgroundColor={bg}>{'\u2026'}</Text>);
+  } else if (clipped.length < maxWidth) {
+    parts.push(<Text key="p" backgroundColor={bg}>{' '.repeat(maxWidth - clipped.length)}</Text>);
   }
   return <>{parts}</>;
 }

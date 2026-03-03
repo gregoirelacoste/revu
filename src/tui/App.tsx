@@ -18,6 +18,7 @@ import { StatusBar } from './components/StatusBar.js';
 import { HelpOverlay } from './components/HelpOverlay.js';
 import { MethodMapOverlay } from './components/MethodMapOverlay.js';
 import { CommentsOverlay } from './components/CommentsOverlay.js';
+import { loadSyntaxTheme } from './syntax.js';
 import { buildMethodMapData } from './method-map-data.js';
 import { collectAllComments } from './comment-data.js';
 import { buildTree, filterTree, flattenTree, buildFileDiffs, buildUnifiedRows } from './data.js';
@@ -109,6 +110,9 @@ export function App({ initialData, rootDir, rescan }: AppProps) {
     }
     return map;
   }, [data]);
+
+  // Syntax theme (config-driven, null = disabled)
+  const syntaxTheme = useMemo(() => loadSyntaxTheme(data.config.syntax), [data.config.syntax]);
 
   // State
   const [panel, setPanel] = useState(0);
@@ -643,12 +647,8 @@ export function App({ initialData, rootDir, rescan }: AppProps) {
             <Box flexDirection="column" overflow="hidden">
               {fullFileLines.slice(diffScroll, diffScroll + bodyH - 3).map((line, i) => {
                 const isCur = panel === 1 && (diffScroll + i) === safeDiffCursor;
-                const lineW = diffW - 8;
                 return (
-                  <Box key={`fl${i}`}>
-                    <Text color={C.dim}>{String(line.n).padStart(4)} </Text>
-                    <Text color={isCur ? C.white : C.text} bold={isCur}>{line.c.slice(0, lineW)}</Text>
-                  </Box>
+                  <DLine key={`fl${i}`} line={line} width={diffW - 2} isCursor={isCur} syntaxTheme={syntaxTheme} />
                 );
               })}
               {fullFileLineCount > bodyH - 3 && (
@@ -689,7 +689,7 @@ export function App({ initialData, rootDir, rescan }: AppProps) {
                   return (
                     <Box key={`d${i}`} flexDirection="column">
                       <Box>
-                        <DLine line={line} width={diffW - 6} isCursor={isCur} flag={flag} />
+                        <DLine line={line} width={diffW - 6} isCursor={isCur} flag={flag} syntaxTheme={syntaxTheme} />
                         {isFlaggable ? (
                           <Text color={flag ? (FLAG_COLOR[flag] ?? C.dim) : C.dim}>
                             {flag ? ` ${FLAG_ICON[flag]}` : ' \u25CB'}
@@ -710,11 +710,11 @@ export function App({ initialData, rootDir, rescan }: AppProps) {
                   <Box key={`d${i}`} flexDirection="column">
                     <Box>
                       <Box width={halfDiff}>
-                        <DLine line={row.baseLine ?? null} width={halfDiff} isCursor={false} />
+                        <DLine line={row.baseLine ?? null} width={halfDiff} isCursor={false} syntaxTheme={syntaxTheme} />
                       </Box>
                       <Text color={C.border}>{'\u2502'}</Text>
                       <Box width={halfDiff}>
-                        <DLine line={row.reviewLine ?? null} width={halfDiff - 4} isCursor={isCur} flag={flag} />
+                        <DLine line={row.reviewLine ?? null} width={halfDiff - 4} isCursor={isCur} flag={flag} syntaxTheme={syntaxTheme} />
                       </Box>
                       {row.reviewLine && (row.reviewLine.t === 'add' || row.reviewLine.t === 'del') ? (
                         <Text color={flag ? (FLAG_COLOR[flag] ?? C.dim) : C.dim}>
