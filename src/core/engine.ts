@@ -54,6 +54,7 @@ export interface ScanResult {
   allFiles: ParsedFile[];
   config: RevuConfig;
   scoringContext?: ScoringContext;
+  repoGraph: Map<string, RepoGraph>;
 }
 
 // ── Main orchestrator ──
@@ -61,7 +62,7 @@ export interface ScanResult {
 export async function scan(rootDir: string, baseBranch = 'develop', includeWorkingTree = true): Promise<ScanResult> {
   const config = await loadConfig(rootDir);
   const repos = await scanRepos(rootDir, baseBranch);
-  if (repos.length === 0) return { repos: [], links: [], allFiles: [], config };
+  if (repos.length === 0) return { repos: [], links: [], allFiles: [], config, repoGraph: new Map() };
 
   const allParsedFiles: ParsedFile[] = [];
   const repoEntries: RepoEntry[] = [];
@@ -94,7 +95,7 @@ export async function scan(rootDir: string, baseBranch = 'develop', includeWorki
     detectSideEffects(repoEntries, links);
   }
 
-  return { repos: repoEntries, links, allFiles: allParsedFiles, config, scoringContext };
+  return { repos: repoEntries, links, allFiles: allParsedFiles, config, scoringContext, repoGraph: repoGraphs };
 }
 
 // ── Per-repo processing ──

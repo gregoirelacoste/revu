@@ -70,6 +70,30 @@ function repoToTree(repo: RepoEntry): TreeItem {
   };
 }
 
+// ── Filter tree: keep only files with diffs, optionally hide reviewed ──
+
+export function filterTree(
+  items: TreeItem[],
+  diffs: Map<string, TuiFileDiff>,
+  fileProgress: Map<string, 'none' | 'partial' | 'complete'>,
+  hideReviewed: boolean,
+): TreeItem[] {
+  const result: TreeItem[] = [];
+  for (const item of items) {
+    const isFolder = item.type === 'folder' || item.type === 'repo';
+    if (isFolder) {
+      const children = filterTree(item.children ?? [], diffs, fileProgress, hideReviewed);
+      if (children.length === 0) continue;
+      result.push({ ...item, children });
+    } else {
+      if (!item.id || !diffs.has(item.id)) continue;
+      if (hideReviewed && fileProgress.get(item.id) === 'complete') continue;
+      result.push(item);
+    }
+  }
+  return result;
+}
+
 // ── Flatten tree for keyboard navigation ──
 
 export function flattenTree(
@@ -100,8 +124,7 @@ export function buildFileDiffs(result: ScanResult): Map<string, TuiFileDiff> {
       const changed = allMethods.filter(m => m.status !== 'unch');
       if (changed.length === 0) continue;
 
-      const sorted = [...changed].sort((a, b) => b.crit - a.crit);
-      const rows = buildDiffRows(sorted, lineCrit);
+      const rows = buildDiffRows(changed, lineCrit);
       diffs.set(file.id, {
         name: `${file.name}${file.ext}`,
         path: file.path,

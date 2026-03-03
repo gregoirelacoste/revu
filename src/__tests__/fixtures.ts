@@ -94,6 +94,7 @@ export function mockScanResult(overrides?: Partial<ScanResult>): ScanResult {
       scoring: defaultScoringConfig(),
       rules: { alwaysShow: [], sideEffectDetection: true, minCritForDisplay: 0 },
     },
+    repoGraph: new Map(),
     ...overrides,
   };
 }
