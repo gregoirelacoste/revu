@@ -141,9 +141,6 @@ export function buildFileDiffs(result: ScanResult): Map<string, TuiFileDiff> {
 
 function buildDiffRows(methods: MethodData[], lineCrit: LineCritMultipliers): DiffRow[] {
   const rows: DiffRow[] = [];
-  // Global counters across all methods — ensures unique lineKeys per file
-  let globalBaseLineNum = 0;
-  let globalReviewLineNum = 0;
 
   for (const m of methods) {
     const label = methodLabel(m);
@@ -156,17 +153,14 @@ function buildDiffRows(methods: MethodData[], lineCrit: LineCritMultipliers): Di
 
     if (m.status === 'del') {
       for (const d of m.diff) {
-        globalBaseLineNum++;
-        globalReviewLineNum++;
         const lc = classifyLine(d.c, lineCrit);
-        const line: TuiDiffLine = { n: globalReviewLineNum, c: d.c, t: 'del', crit: lc };
         rows.push({
           type: 'diffRow',
           method: m.name,
           methodCrit: m.crit,
           label,
-          baseLine: { n: globalBaseLineNum, c: d.c, t: 'del', crit: lc },
-          reviewLine: line,
+          baseLine: { n: d.ln, c: d.c, t: 'del', crit: lc },
+          reviewLine: { n: d.ln, c: d.c, t: 'del', crit: lc },
         });
       }
       continue;
@@ -175,28 +169,24 @@ function buildDiffRows(methods: MethodData[], lineCrit: LineCritMultipliers): Di
     // Split diff lines into base (del/ctx) and review (add/ctx)
     const baseLines: TuiDiffLine[] = [];
     const reviewLines: TuiDiffLine[] = [];
+    let addCount = 0;
 
-    let methodReviewStart = globalReviewLineNum;
     for (const d of m.diff) {
       if (d.t === 'd') {
-        globalBaseLineNum++;
         const lc = classifyLine(d.c, lineCrit);
-        baseLines.push({ n: globalBaseLineNum, c: d.c, t: 'del', crit: lc });
+        baseLines.push({ n: d.ln, c: d.c, t: 'del', crit: lc });
       } else if (d.t === 'a') {
-        globalReviewLineNum++;
-        const localIdx = globalReviewLineNum - methodReviewStart;
-        const isSig = m.sigChanged && localIdx <= 2;
+        addCount++;
+        const isSig = m.sigChanged && addCount <= 2;
         const lc = classifyLine(d.c, lineCrit);
         reviewLines.push({
-          n: globalReviewLineNum, c: d.c, t: 'add',
+          n: d.ln, c: d.c, t: 'add',
           crit: isSig ? Math.max(lc, 2.0) : lc,
           isSig,
         });
       } else {
-        globalBaseLineNum++;
-        globalReviewLineNum++;
-        baseLines.push({ n: globalBaseLineNum, c: d.c, t: 'ctx' });
-        reviewLines.push({ n: globalReviewLineNum, c: d.c, t: 'ctx' });
+        baseLines.push({ n: d.ln, c: d.c, t: 'ctx' });
+        reviewLines.push({ n: d.ln, c: d.c, t: 'ctx' });
       }
     }
 
@@ -207,10 +197,9 @@ function buildDiffRows(methods: MethodData[], lineCrit: LineCritMultipliers): Di
     for (let i = 0; i < maxLen; i++) {
       const base = baseLines[i] ?? null;
       let review = reviewLines[i] ?? null;
-      // Del-only rows need a reviewLine for flagging (same pattern as m.status === 'del')
+      // Del-only rows need a reviewLine for flagging
       if (base?.t === 'del' && !review) {
-        globalReviewLineNum++;
-        review = { n: globalReviewLineNum, c: base.c, t: 'del', crit: base.crit };
+        review = { n: base.n, c: base.c, t: 'del', crit: base.crit };
       }
       rows.push({
         type: 'diffRow',
@@ -221,7 +210,6 @@ function buildDiffRows(methods: MethodData[], lineCrit: LineCritMultipliers): Di
         reviewLine: review,
       });
     }
-
   }
 
   return rows;
@@ -265,11 +253,10 @@ export function buildUnifiedRows(rows: DiffRow[]): DiffRow[] {
 
     // Del-only or del side of a paired row
     if (base && base.t === 'del') {
-      // For mod pairs (del+add): share the add's n so both lines have the same flag key
       const reviewLine = review?.t === 'del'
         ? review
         : review?.t === 'add'
-          ? { ...base, n: review.n }
+          ? { ...base, n: base.n }
           : null;
       pending.dels.push({
         type: 'diffRow', method: row.method, methodCrit: row.methodCrit, label: row.label,

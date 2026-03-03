@@ -183,7 +183,7 @@ export interface MethodData {
   httpVerb?: string;
   impacted?: boolean;
   startLine: number;
-  diff: Array<{ t: DiffLineType; c: string }>;
+  diff: Array<{ t: DiffLineType; c: string; ln: number }>;
 }
 
 // ── Review ──

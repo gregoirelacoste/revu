@@ -95,28 +95,24 @@ function collectFindings(
 
   for (const file of sorted) {
     const changed = allMethods(file).filter(m => m.status !== 'unch');
-    let globalReviewLineNum = 0;
 
     for (const method of changed.sort((a, b) => b.crit - a.crit || a.name.localeCompare(b.name))) {
       for (const d of method.diff) {
-        if (d.t === 'a' || d.t === 'c' || d.t === 'd') {
-          globalReviewLineNum++;
-          const lr = lineReviews.get(`${file.id}:${globalReviewLineNum}`);
-          if (lr && (lr.flag === 'bug' || lr.flag === 'question' || lr.comments.length > 0)) {
-            const type = lr.flag === 'bug' ? 'BUG' : lr.flag === 'question' ? '?' : 'OK';
-            const comment = lr.comments.length > 0
-              ? lr.comments.map(c => c.text).join('; ')
-              : `Flagged ${lr.flag}`;
-            findings.push({
-              index: findings.length + 1,
-              type,
-              file: `${file.name}${file.ext}`,
-              line: globalReviewLineNum,
-              method: method.name,
-              crit: method.crit,
-              comment,
-            });
-          }
+        const lr = lineReviews.get(`${file.id}:${d.ln}`);
+        if (lr && (lr.flag === 'bug' || lr.flag === 'question' || lr.comments.length > 0)) {
+          const type = lr.flag === 'bug' ? 'BUG' : lr.flag === 'question' ? '?' : 'OK';
+          const comment = lr.comments.length > 0
+            ? lr.comments.map(c => c.text).join('; ')
+            : `Flagged ${lr.flag}`;
+          findings.push({
+            index: findings.length + 1,
+            type,
+            file: `${file.name}${file.ext}`,
+            line: d.ln,
+            method: method.name,
+            crit: method.crit,
+            comment,
+          });
         }
       }
     }
@@ -144,25 +140,20 @@ function renderFindingsTable(findings: Finding[]): string {
 
 function renderMethod(
   method: MethodData, fileId: string, lineReviews: Map<string, LineReview>,
-  globalReviewLineNum: number,
-): { content: string; nextReviewLine: number } {
-  if (method.status === 'unch') return { content: '', nextReviewLine: globalReviewLineNum };
+): string {
+  if (method.status === 'unch') return '';
 
   const lines: string[] = [];
   const methodFlags: string[] = [];
   const methodComments: Array<{ flag: string; text: string }> = [];
 
-  // Mirror buildDiffRows logic for counter advancement
   for (const d of method.diff) {
-    if (d.t === 'a' || d.t === 'c' || d.t === 'd') {
-      globalReviewLineNum++;
-      const lr = lineReviews.get(`${fileId}:${globalReviewLineNum}`);
-      if (lr) {
-        if (lr.flag === 'bug') methodFlags.push('BUG');
-        if (lr.flag === 'question') methodFlags.push('?');
-        for (const c of lr.comments) {
-          methodComments.push({ flag: lr.flag, text: c.text });
-        }
+    const lr = lineReviews.get(`${fileId}:${d.ln}`);
+    if (lr) {
+      if (lr.flag === 'bug') methodFlags.push('BUG');
+      if (lr.flag === 'question') methodFlags.push('?');
+      for (const c of lr.comments) {
+        methodComments.push({ flag: lr.flag, text: c.text });
       }
     }
   }
@@ -188,7 +179,7 @@ function renderMethod(
     lines.push(`> **${label}** : ${mc.text}`);
   }
 
-  return { content: lines.join('\n'), nextReviewLine: globalReviewLineNum };
+  return lines.join('\n');
 }
 
 // ── File rendering ──
@@ -239,10 +230,8 @@ function renderFile(
   }
 
   const changed = allMethods(file).filter(m => m.status !== 'unch');
-  let globalReviewLineNum = 0;
   for (const method of changed.sort((a, b) => b.crit - a.crit || a.name.localeCompare(b.name))) {
-    const { content, nextReviewLine } = renderMethod(method, file.id, lineReviews, globalReviewLineNum);
-    globalReviewLineNum = nextReviewLine;
+    const content = renderMethod(method, file.id, lineReviews);
     if (content) lines.push('', content);
   }
 
@@ -450,13 +439,11 @@ function groupFindingsByMethod(
     const method = allMethods(file).find(m => m.name === group.method);
     if (!method || method.status === 'del' || method.diff.length === 0) continue;
 
-    // Build reviewable lines with their global line numbers
+    // Build reviewable lines with their git line numbers
     const reviewLines: Array<{ num: number; prefix: string; content: string }> = [];
-    let lineNum = 0;
     for (const d of method.diff) {
-      if (d.t === 'a' || d.t === 'c' || d.t === 'd') lineNum++;
       const prefix = d.t === 'a' ? '+' : d.t === 'd' ? '-' : ' ';
-      reviewLines.push({ num: lineNum, prefix, content: d.c });
+      reviewLines.push({ num: d.ln, prefix, content: d.c });
     }
 
     // Find flagged line indices and extract context window

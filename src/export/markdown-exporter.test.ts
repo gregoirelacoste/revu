@@ -34,8 +34,8 @@ describe('exportMarkdown', () => {
       crit: 6.2,
       sigChanged: true,
       diff: [
-        { t: 'd', c: 'async getQuotas(id: string): Promise<QuotaDto[]> {' },
-        { t: 'a', c: 'async getQuotas(id: string): Promise<QuotaStatsDto> {' },
+        { t: 'd', c: 'async getQuotas(id: string): Promise<QuotaDto[]> {', ln: -1 },
+        { t: 'a', c: 'async getQuotas(id: string): Promise<QuotaStatsDto> {', ln: 1 },
       ],
     });
     const file = mockFileEntry({

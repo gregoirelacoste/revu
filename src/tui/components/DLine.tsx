@@ -52,8 +52,9 @@ export function DLine({ line, width, isCursor, flag, syntaxTheme }: DLineProps) 
           ? C.delBg
           : undefined;
 
-  const lineNum = String(line.n).padStart(3, ' ');
-  const maxCodeLen = Math.max(10, width - 8);
+  const absNum = Math.abs(line.n);
+  const lineNum = String(absNum).padStart(4, ' ');
+  const maxCodeLen = Math.max(10, width - 9);
   const isTruncated = line.c.length > maxCodeLen;
   // Pad code to fill width so background extends across the full line
   const rawCode = isTruncated ? line.c.slice(0, maxCodeLen - 1) + '\u2026' : line.c;

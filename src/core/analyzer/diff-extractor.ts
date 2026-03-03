@@ -94,7 +94,7 @@ function normalizeConcat(lines: string[]): string {
     .replace(/'/g, '"');
 }
 
-function isFormattingOnly(diff: Array<{ t: DiffLineType; c: string }>): boolean {
+function isFormattingOnly(diff: Array<{ t: DiffLineType; c: string; ln: number }>): boolean {
   if (diff.length === 0) return true;
   const adds = diff.filter(d => d.t === 'a');
   const dels = diff.filter(d => d.t === 'd');
@@ -127,18 +127,21 @@ export function buildUncoveredDiff(
   const isCovered = (line: number): boolean =>
     coveredRanges.some(([s, e]) => line >= s && line <= e);
 
-  const uncovered: Array<{ t: DiffLineType; c: string }> = [];
+  const uncovered: Array<{ t: DiffLineType; c: string; ln: number }> = [];
   for (const hunk of diff.hunks) {
     let newLine = hunk.newStart;
+    let oldLine = hunk.oldStart;
     for (const line of hunk.lines) {
       if (line.type === 'del') {
-        if (!isCovered(newLine)) uncovered.push({ t: 'd', c: line.content });
+        if (!isCovered(newLine)) uncovered.push({ t: 'd', c: line.content, ln: -oldLine });
+        oldLine++;
         continue;
       }
       if (!isCovered(newLine)) {
-        if (line.type === 'add') uncovered.push({ t: 'a', c: line.content });
-        else if (line.type === 'context') uncovered.push({ t: 'c', c: line.content });
+        if (line.type === 'add') uncovered.push({ t: 'a', c: line.content, ln: newLine });
+        else if (line.type === 'context') uncovered.push({ t: 'c', c: line.content, ln: newLine });
       }
+      if (line.type === 'context') oldLine++;
       newLine++;
     }
   }
@@ -161,22 +164,25 @@ export function buildUncoveredDiff(
 
 function extractDeletedBlockDiff(
   name: string, diff: FileDiff,
-): Array<{ t: DiffLineType; c: string }> {
-  const result: Array<{ t: DiffLineType; c: string }> = [];
+): Array<{ t: DiffLineType; c: string; ln: number }> {
+  const result: Array<{ t: DiffLineType; c: string; ln: number }> = [];
   for (const hunk of diff.hunks) {
-    const delBlock: string[] = [];
+    let oldLine = hunk.oldStart;
+    const delBlock: Array<{ c: string; oldLn: number }> = [];
     for (const line of hunk.lines) {
       if (line.type === 'del') {
-        delBlock.push(line.content);
+        delBlock.push({ c: line.content, oldLn: oldLine });
+        oldLine++;
       } else {
-        if (delBlock.some(l => l.includes(name))) {
-          for (const dl of delBlock) result.push({ t: 'd', c: dl });
+        if (delBlock.some(d => d.c.includes(name))) {
+          for (const d of delBlock) result.push({ t: 'd', c: d.c, ln: -d.oldLn });
         }
         delBlock.length = 0;
+        if (line.type === 'context') oldLine++;
       }
     }
-    if (delBlock.some(l => l.includes(name))) {
-      for (const dl of delBlock) result.push({ t: 'd', c: dl });
+    if (delBlock.some(d => d.c.includes(name))) {
+      for (const d of delBlock) result.push({ t: 'd', c: d.c, ln: -d.oldLn });
     }
   }
   return result;
@@ -184,21 +190,24 @@ function extractDeletedBlockDiff(
 
 function extractMethodDiff(
   startLine: number, endLine: number, diff: FileDiff,
-): Array<{ t: DiffLineType; c: string }> {
-  const result: Array<{ t: DiffLineType; c: string }> = [];
+): Array<{ t: DiffLineType; c: string; ln: number }> {
+  const result: Array<{ t: DiffLineType; c: string; ln: number }> = [];
   for (const hunk of diff.hunks) {
     let newLine = hunk.newStart;
+    let oldLine = hunk.oldStart;
     for (const line of hunk.lines) {
       if (line.type === 'del') {
         if (newLine >= startLine && newLine <= endLine) {
-          result.push({ t: 'd', c: line.content });
+          result.push({ t: 'd', c: line.content, ln: -oldLine });
         }
+        oldLine++;
         continue;
       }
       if (newLine >= startLine && newLine <= endLine) {
-        if (line.type === 'add') result.push({ t: 'a', c: line.content });
-        else if (line.type === 'context') result.push({ t: 'c', c: line.content });
+        if (line.type === 'add') result.push({ t: 'a', c: line.content, ln: newLine });
+        else if (line.type === 'context') result.push({ t: 'c', c: line.content, ln: newLine });
       }
+      if (line.type === 'context') oldLine++;
       newLine++;
     }
   }
