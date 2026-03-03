@@ -33,6 +33,7 @@ import { rescore } from '../core/engine.js';
 import type { ContextData, DiffMode, DiffRow, FlatItem, TreeItem, TuiDiffLine, TuiFileDiff } from './types.js';
 
 import type { LineReview } from './hooks/useReview.js';
+import { isReviewValid } from './hooks/useReview.js';
 
 function computeMethodReviewStatus(
   rows: DiffRow[], fileId: string, lineReviews: Map<string, LineReview>,
@@ -51,7 +52,8 @@ function computeMethodReviewStatus(
     }
     if (row.reviewLine && (row.reviewLine.t === 'add' || row.reviewLine.t === 'del')) {
       hasFlaggable = true;
-      if (!lineReviews.get(`${fileId}:${row.reviewLine.n}`)?.flag) allFlagged = false;
+      const review = lineReviews.get(`${fileId}:${row.reviewLine.n}`);
+      if (!isReviewValid(review, row.reviewLine.c)) allFlagged = false;
     }
   }
   if (method && hasFlaggable) status.set(method, allFlagged);
@@ -654,7 +656,7 @@ export function App({ initialData, rootDir, rescan }: AppProps) {
                 const rowIndex = diffScroll + i;
                 const lineKey = row.reviewLine ? `${activeFile}:${row.reviewLine.n}` : '';
                 const review = lineReviews.get(lineKey);
-                const flag = review?.flag;
+                const flag = row.reviewLine ? (isReviewValid(review, row.reviewLine.c) ? review?.flag : undefined) : review?.flag;
                 const comments = review?.comments ?? [];
                 const isCur = panel === 1 && rowIndex === safeDiffCursor;
                 const isFlaggable = row.reviewLine && (row.reviewLine.t === 'add' || row.reviewLine.t === 'del');

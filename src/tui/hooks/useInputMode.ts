@@ -5,13 +5,14 @@ import { useInput } from 'ink';
 export interface InputMode {
   lineKey: string;
   draft: string;
+  content?: string;
 }
 
 export function useInputMode(
   isActive: boolean,
   inputMode: InputMode | null,
   setInputMode: (v: InputMode | null) => void,
-  addLineComment: (lineKey: string, text: string) => void,
+  addLineComment: (lineKey: string, text: string, content?: string) => void,
 ): void {
   useInput((input, key) => {
     if (!isActive || !inputMode) return;
@@ -23,7 +24,7 @@ export function useInputMode(
 
     if (key.return) {
       if (inputMode.draft.trim()) {
-        addLineComment(inputMode.lineKey, inputMode.draft.trim());
+        addLineComment(inputMode.lineKey, inputMode.draft.trim(), inputMode.content);
       }
       setInputMode(null);
       return;

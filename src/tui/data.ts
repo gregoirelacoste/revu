@@ -121,6 +121,7 @@ export function buildFileDiffs(result: ScanResult): Map<string, TuiFileDiff> {
   for (const repo of result.repos) {
     for (const file of repo.files) {
       const allMethods = [...file.methods, ...file.constants];
+      allMethods.sort((a, b) => a.startLine - b.startLine);
       const changed = allMethods.filter(m => m.status !== 'unch');
       if (changed.length === 0) continue;
 

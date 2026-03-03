@@ -2,6 +2,7 @@
 
 import type { TuiFileDiff, ReviewStats } from './types.js';
 import type { LineReview } from './hooks/useReview.js';
+import { isReviewValid } from './hooks/useReview.js';
 
 export function computeFileReviewStats(
   fileId: string, diff: TuiFileDiff, lineReviews: Map<string, LineReview>,
@@ -12,11 +13,11 @@ export function computeFileReviewStats(
     if (!row.reviewLine || (row.reviewLine.t !== 'add' && row.reviewLine.t !== 'del')) continue;
     total++;
     const lr = lineReviews.get(`${fileId}:${row.reviewLine.n}`);
-    if (!lr) continue;
+    if (!isReviewValid(lr, row.reviewLine.c)) continue;
     reviewed++;
-    if (lr.flag === 'bug') bugs++;
-    if (lr.flag === 'question') questions++;
-    comments += lr.comments.length;
+    if (lr!.flag === 'bug') bugs++;
+    if (lr!.flag === 'question') questions++;
+    comments += lr!.comments.length;
   }
   return { total, reviewed, bugs, questions, comments };
 }

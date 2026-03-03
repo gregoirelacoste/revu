@@ -24,7 +24,7 @@ export function buildMethodData(
 
     return {
       name: m.name, status, crit, usages: 1, tested: false,
-      sigChanged, httpVerb: m.httpVerb, diff: methodDiff,
+      sigChanged, httpVerb: m.httpVerb, startLine: m.startLine, diff: methodDiff,
     };
   });
 
@@ -37,7 +37,7 @@ export function buildMethodData(
         result.push({
           name: om.name, status: 'del',
           crit: Math.round(fileCrit * 0.8 * 10) / 10,
-          usages: 0, tested: false, sigChanged: false, diff: delDiff,
+          usages: 0, tested: false, sigChanged: false, startLine: Infinity, diff: delDiff,
         });
       }
     }
@@ -58,7 +58,7 @@ export function buildConstantData(
       name: c.name, status: 'new' as MethodStatus,
       crit: Math.round(fileCrit * 0.6 * 10) / 10,
       usages: 1, tested: false, sigChanged: false,
-      isType: c.isType, diff: rawDiff,
+      isType: c.isType, startLine: c.startLine, diff: rawDiff,
     };
   }).filter(Boolean) as MethodData[];
 
@@ -71,7 +71,7 @@ export function buildConstantData(
         result.push({
           name: oc.name, status: 'del',
           crit: Math.round(fileCrit * 0.5 * 10) / 10,
-          usages: 0, tested: false, sigChanged: false, diff: delDiff,
+          usages: 0, tested: false, sigChanged: false, startLine: Infinity, diff: delDiff,
         });
       }
     }
@@ -152,6 +152,7 @@ export function buildUncoveredDiff(
     usages: 0,
     tested: false,
     sigChanged: false,
+    startLine: 0,
     diff: uncovered,
   };
 }

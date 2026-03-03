@@ -135,14 +135,14 @@ describe('flattenTree', () => {
 // ── buildFileDiffs ──
 
 describe('buildFileDiffs', () => {
-  it('sorts methods by crit descending', () => {
+  it('preserves source file order (by startLine)', () => {
     const result = mockScanResult({
       repos: [mockRepoEntry({
         files: [mockFileEntry({
           id: 'f1',
           methods: [
-            mockMethodData({ name: 'low', crit: 2.0, status: 'mod' }),
-            mockMethodData({ name: 'high', crit: 8.0, status: 'mod' }),
+            mockMethodData({ name: 'first', crit: 2.0, status: 'mod', startLine: 5 }),
+            mockMethodData({ name: 'second', crit: 8.0, status: 'mod', startLine: 20 }),
           ],
         })],
       })],
@@ -150,8 +150,8 @@ describe('buildFileDiffs', () => {
     const diffs = buildFileDiffs(result);
     const fileDiff = diffs.get('f1')!;
     const headers = fileDiff.rows.filter(r => r.type === 'hunkHeader');
-    expect(headers[0].method).toBe('high');
-    expect(headers[1].method).toBe('low');
+    expect(headers[0].method).toBe('first');
+    expect(headers[1].method).toBe('second');
   });
 
   it('filters out unchanged methods', () => {
@@ -178,8 +178,8 @@ describe('buildFileDiffs', () => {
       repos: [mockRepoEntry({
         files: [mockFileEntry({
           id: 'f1',
-          methods: [mockMethodData({ name: 'fn1', status: 'new' })],
-          constants: [mockMethodData({ name: 'CONST', status: 'mod' })],
+          methods: [mockMethodData({ name: 'fn1', status: 'new', startLine: 10 })],
+          constants: [mockMethodData({ name: 'CONST', status: 'mod', startLine: 1 })],
         })],
       })],
     });

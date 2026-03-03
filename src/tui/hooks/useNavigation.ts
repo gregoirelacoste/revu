@@ -39,8 +39,8 @@ interface NavSetters {
   setDiffCursor: (fn: (v: number) => number) => void;
   setCtxIdx: (fn: (v: number) => number) => void;
   setMinCrit: (fn: (v: number) => number) => void;
-  setLineFlag: (lineKey: string, flag: LineFlag | undefined) => void;
-  setLineFlagBatch: (entries: Array<[string, LineFlag | undefined]>) => void;
+  setLineFlag: (lineKey: string, flag: LineFlag | undefined, content?: string) => void;
+  setLineFlagBatch: (entries: Array<[string, LineFlag | undefined, string?]>) => void;
   setBatchMsg: (msg: string | null) => void;
   setCollapsed: (fn: (v: Set<string>) => Set<string>) => void;
   setInputMode: (v: InputMode | null) => void;
@@ -81,37 +81,38 @@ interface NavContext {
 
 // ── Batch flag helpers ──
 
-function getHunkLines(rows: DiffRow[], hunkIdx: number, fileId: string): string[] {
-  const keys: string[] = [];
+function getHunkLines(rows: DiffRow[], hunkIdx: number, fileId: string): Map<string, string> {
+  const map = new Map<string, string>();
   for (let j = hunkIdx + 1; j < rows.length; j++) {
     if (rows[j].type !== 'diffRow') break;
-    if (rows[j].reviewLine) keys.push(`${fileId}:${rows[j].reviewLine!.n}`);
+    if (rows[j].reviewLine) map.set(`${fileId}:${rows[j].reviewLine!.n}`, rows[j].reviewLine!.c);
   }
-  return keys;
+  return map;
 }
 
-function getAllFileLines(diffs: Map<string, TuiFileDiff>, fileId: string): string[] {
+function getAllFileLines(diffs: Map<string, TuiFileDiff>, fileId: string): Map<string, string> {
   const diff = diffs.get(fileId);
-  if (!diff) return [];
-  const keys: string[] = [];
+  if (!diff) return new Map();
+  const map = new Map<string, string>();
   for (const row of diff.rows) {
-    if (row.type === 'diffRow' && row.reviewLine) keys.push(`${fileId}:${row.reviewLine.n}`);
+    if (row.type === 'diffRow' && row.reviewLine) map.set(`${fileId}:${row.reviewLine.n}`, row.reviewLine.c);
   }
-  return keys;
+  return map;
 }
 
 function batchFlagSafe(
-  keys: string[],
+  lineMap: Map<string, string>,
   flag: LineFlag,
   lineReviews: Map<string, LineReview>,
-  setLineFlagBatch: (entries: Array<[string, LineFlag | undefined]>) => void,
+  setLineFlagBatch: (entries: Array<[string, LineFlag | undefined, string?]>) => void,
 ): number {
-  if (keys.length === 0) return 0;
+  if (lineMap.size === 0) return 0;
+  const keys = [...lineMap.keys()];
   const withNoFlag = keys.filter(k => !lineReviews.get(k)?.flag);
   const withThisFlag = keys.filter(k => lineReviews.get(k)?.flag === flag);
 
   if (withNoFlag.length > 0) {
-    setLineFlagBatch(withNoFlag.map(k => [k, flag]));
+    setLineFlagBatch(withNoFlag.map(k => [k, flag, lineMap.get(k)]));
     return withNoFlag.length;
   }
   if (withThisFlag.length > 0) {
@@ -198,23 +199,23 @@ function handleTreePanel(
   // Batch flag: c/x/? — safe (only flags lines without existing flag, toggle off if all same)
   if (input === 'c' || input === 'x' || input === '?') {
     const flag: LineFlag = input === 'c' ? 'ok' : input === 'x' ? 'bug' : 'question';
-    let keys: string[];
+    let lineMap: Map<string, string>;
 
     if (!item.isFolder && item.node.id) {
-      keys = getAllFileLines(diffs, item.node.id);
+      lineMap = getAllFileLines(diffs, item.node.id);
     } else if (item.isFolder) {
-      keys = [];
+      lineMap = new Map();
       for (let j = treeIdx + 1; j < flatTree.length; j++) {
         if (flatTree[j].depth <= item.depth) break;
         if (!flatTree[j].isFolder && flatTree[j].node.id) {
-          keys.push(...getAllFileLines(diffs, flatTree[j].node.id!));
+          for (const [k, v] of getAllFileLines(diffs, flatTree[j].node.id!)) lineMap.set(k, v);
         }
       }
     } else {
-      keys = [];
+      lineMap = new Map();
     }
 
-    const count = batchFlagSafe(keys, flag, context.lineReviews, setters.setLineFlagBatch);
+    const count = batchFlagSafe(lineMap, flag, context.lineReviews, setters.setLineFlagBatch);
     emitBatchMsg(count, flag, item.node.name, setters.setBatchMsg);
     return true;
   }
@@ -378,10 +379,11 @@ function handleDiffPanel(
   // Line-level flag + comment
   if (curRow?.type === 'diffRow' && curRow.reviewLine && selectedFile) {
     const lineKey = `${selectedFile}:${curRow.reviewLine.n}`;
-    if (input === 'c') { setLineFlag(lineKey, 'ok'); return true; }
-    if (input === 'x') { setLineFlag(lineKey, 'bug'); return true; }
-    if (input === '?') { setLineFlag(lineKey, 'question'); return true; }
-    if (input === 'N') { setters.setInputMode({ lineKey, draft: '' }); return true; }
+    const lineContent = curRow.reviewLine.c;
+    if (input === 'c') { setLineFlag(lineKey, 'ok', lineContent); return true; }
+    if (input === 'x') { setLineFlag(lineKey, 'bug', lineContent); return true; }
+    if (input === '?') { setLineFlag(lineKey, 'question', lineContent); return true; }
+    if (input === 'N') { setters.setInputMode({ lineKey, draft: '', content: lineContent }); return true; }
   }
   return true;
 }
@@ -438,8 +440,8 @@ function handleContextPanel(
         const fileDiff = diffs.get(chunk.fileId);
         if (fileDiff) {
           const flag: LineFlag = input === 'c' ? 'ok' : input === 'x' ? 'bug' : 'question';
-          const keys = getHunkLines(fileDiff.rows, chunk.hunkIndex, chunk.fileId);
-          const count = batchFlagSafe(keys, flag, context.lineReviews, setters.setLineFlagBatch);
+          const lineMap = getHunkLines(fileDiff.rows, chunk.hunkIndex, chunk.fileId);
+          const count = batchFlagSafe(lineMap, flag, context.lineReviews, setters.setLineFlagBatch);
           emitBatchMsg(count, flag, chunk.method, setters.setBatchMsg);
         }
       }

@@ -12,13 +12,28 @@ const VALID_LINE_FLAGS = new Set<string>(['ok', 'bug', 'question']);
 export interface LineReview {
   flag: LineFlag;
   comments: LineComment[];
+  contentHash?: string;
+}
+
+export function lineHash(content: string): string {
+  let h = 0;
+  for (let i = 0; i < content.length; i++) {
+    h = ((h << 5) - h + content.charCodeAt(i)) | 0;
+  }
+  return h.toString(36);
+}
+
+export function isReviewValid(review: LineReview | undefined, content: string): boolean {
+  if (!review?.flag) return false;
+  if (!review.contentHash) return true;  // legacy sans hash → valide
+  return review.contentHash === lineHash(content);
 }
 
 export interface UseReviewResult {
   lineReviews: Map<string, LineReview>;
-  setLineFlag: (lineKey: string, flag: LineFlag | undefined) => void;
-  setLineFlagBatch: (entries: Array<[string, LineFlag | undefined]>) => void;
-  addLineComment: (lineKey: string, text: string) => void;
+  setLineFlag: (lineKey: string, flag: LineFlag | undefined, content?: string) => void;
+  setLineFlagBatch: (entries: Array<[string, LineFlag | undefined, string?]>) => void;
+  addLineComment: (lineKey: string, text: string, content?: string) => void;
   stale: boolean;
   scoringOverride: ScoringOverride | null;
   resetReview: (scope: 'review' | 'ai' | 'all') => void;
@@ -67,6 +82,7 @@ export function useReview(rootDir: string, data: ScanResult): UseReviewResult {
                 merged.set(`${file.id}:${lineId}`, {
                   flag: lr.flag as LineFlag,
                   comments: lr.comments ?? [],
+                  contentHash: lr.contentHash,
                 });
               }
             }
@@ -97,14 +113,16 @@ export function useReview(rootDir: string, data: ScanResult): UseReviewResult {
     timerRef.current = setTimeout(() => saveReviews(storeRef.current, data, reviews), 500);
   }, [data]);
 
-  const setLineFlag = useCallback((lineKey: string, flag: LineFlag | undefined) => {
+  const setLineFlag = useCallback((lineKey: string, flag: LineFlag | undefined, content?: string) => {
     setLineReviews(prev => {
       const next = new Map(prev);
       const existing = next.get(lineKey);
       if (existing && existing.flag === flag) {
         next.delete(lineKey);
       } else if (flag) {
-        next.set(lineKey, { flag, comments: existing?.comments ?? [] });
+        const entry: LineReview = { flag, comments: existing?.comments ?? [] };
+        if (content !== undefined) entry.contentHash = lineHash(content);
+        next.set(lineKey, entry);
       } else {
         next.delete(lineKey);
       }
@@ -113,14 +131,16 @@ export function useReview(rootDir: string, data: ScanResult): UseReviewResult {
     });
   }, [scheduleSave]);
 
-  const setLineFlagBatch = useCallback((entries: Array<[string, LineFlag | undefined]>) => {
+  const setLineFlagBatch = useCallback((entries: Array<[string, LineFlag | undefined, string?]>) => {
     if (entries.length === 0) return;
     setLineReviews(prev => {
       const next = new Map(prev);
-      for (const [lineKey, flag] of entries) {
+      for (const [lineKey, flag, content] of entries) {
         const existing = next.get(lineKey);
         if (flag) {
-          next.set(lineKey, { flag, comments: existing?.comments ?? [] });
+          const entry: LineReview = { flag, comments: existing?.comments ?? [] };
+          if (content !== undefined) entry.contentHash = lineHash(content);
+          next.set(lineKey, entry);
         } else {
           next.delete(lineKey);
         }
@@ -130,15 +150,18 @@ export function useReview(rootDir: string, data: ScanResult): UseReviewResult {
     });
   }, [scheduleSave]);
 
-  const addLineComment = useCallback((lineKey: string, text: string) => {
+  const addLineComment = useCallback((lineKey: string, text: string, content?: string) => {
     setLineReviews(prev => {
       const next = new Map(prev);
       const existing = next.get(lineKey);
       const comment: LineComment = { text, time: new Date().toISOString() };
-      next.set(lineKey, {
+      const entry: LineReview = {
         flag: existing?.flag ?? 'ok',
         comments: [...(existing?.comments ?? []), comment],
-      });
+      };
+      if (content !== undefined) entry.contentHash = lineHash(content);
+      else if (existing?.contentHash) entry.contentHash = existing.contentHash;
+      next.set(lineKey, entry);
       scheduleSave(next);
       return next;
     });
@@ -224,7 +247,7 @@ async function saveReviews(
     let hasData = false;
     for (const file of repo.files) {
       const methods: Record<string, { flag?: Flag; comments: []; actions: [] }> = {};
-      const lines: Record<string, { flag?: Flag; comments: Array<{ text: string; time: string }> }> = {};
+      const lines: Record<string, { flag?: Flag; comments: Array<{ text: string; time: string }>; contentHash?: string }> = {};
 
       for (const [key, lr] of reviews) {
         if (!key.startsWith(`${file.id}:`)) continue;
@@ -233,7 +256,7 @@ async function saveReviews(
         if (rest.startsWith('m:')) {
           methods[rest.slice(2)] = { flag: lr.flag, comments: [], actions: [] };
         } else {
-          lines[rest] = { flag: lr.flag, comments: lr.comments };
+          lines[rest] = { flag: lr.flag, comments: lr.comments, contentHash: lr.contentHash };
         }
         hasData = true;
       }

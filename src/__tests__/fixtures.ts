@@ -43,6 +43,7 @@ export function mockMethodData(overrides?: Partial<MethodData>): MethodData {
     usages: 1,
     tested: false,
     sigChanged: false,
+    startLine: 1,
     diff: [{ t: 'a', c: '  return true;' }],
     ...overrides,
   };

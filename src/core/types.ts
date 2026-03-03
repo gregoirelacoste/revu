@@ -182,6 +182,7 @@ export interface MethodData {
   isType?: boolean;
   httpVerb?: string;
   impacted?: boolean;
+  startLine: number;
   diff: Array<{ t: DiffLineType; c: string }>;
 }
 
@@ -196,7 +197,7 @@ export interface MethodReview {
 export interface FileReview {
   flag?: Flag;
   methods: Record<string, MethodReview>;
-  lines?: Record<string, { flag?: Flag; comments: Array<{ text: string; time: string }> }>;
+  lines?: Record<string, { flag?: Flag; comments: Array<{ text: string; time: string }>; contentHash?: string }>;
 }
 
 export interface ReviewData {
