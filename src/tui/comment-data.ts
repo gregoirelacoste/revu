@@ -37,9 +37,11 @@ export function collectAllComments(
   const map = new Map<string, CommentEntry>();
 
   for (const [fileId, diff] of diffs) {
+    let navIdx = 0;
     for (let rowIdx = 0; rowIdx < diff.rows.length; rowIdx++) {
       const row = diff.rows[rowIdx];
-      if (row.type !== 'diffRow' || !row.reviewLine) continue;
+      if (row.type === 'hunkHeader') continue;
+      if (!row.reviewLine) { navIdx++; continue; }
 
       const key = `${fileId}:${row.reviewLine.n}`;
       const lr = lineReviews.get(key);
@@ -67,9 +69,10 @@ export function collectAllComments(
           method: row.method,
           flag: lr.flag,
           comments: lr.comments.map(c => c.text),
-          diffRowIdx: rowIdx,
+          diffRowIdx: navIdx,
         });
       }
+      navIdx++;
     }
   }
 

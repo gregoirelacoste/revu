@@ -23,7 +23,6 @@ interface NavState {
   showHelp: boolean;
   explorerToggle: 0 | 1;
   diffToggle: 0 | 1 | 2;
-  sortByCrit: boolean;
   focusMode: boolean;
   resetPrompt: boolean;
   showMap: boolean;
@@ -49,7 +48,6 @@ interface NavSetters {
   setShowHelp: (fn: (v: boolean) => boolean) => void;
   setExplorerToggle: (fn: (v: 0 | 1) => 0 | 1) => void;
   setDiffToggle: (fn: (v: 0 | 1 | 2) => 0 | 1 | 2) => void;
-  setSortByCrit: (fn: (v: boolean) => boolean) => void;
   setFocusMode: (fn: (v: boolean) => boolean) => void;
   setShowMap: (fn: (v: boolean) => boolean) => void;
   setMapNodeIdx: (fn: (v: number) => number) => void;
@@ -131,6 +129,19 @@ function emitBatchMsg(count: number, flag: LineFlag, scope: string, setBatchMsg:
   } else {
     setBatchMsg(`All lines already flagged \u00B7 ${scope}`);
   }
+}
+
+/** Find the navDiffRows-compatible index for a method (skips hunkHeaders). */
+function findMethodNavIdx(diffs: Map<string, TuiFileDiff>, fileId: string, method: string): number {
+  const diff = diffs.get(fileId);
+  if (!diff) return 0;
+  let navIdx = 0;
+  for (const r of diff.rows) {
+    if (r.type === 'hunkHeader') continue;
+    if (r.method === method) return navIdx;
+    navIdx++;
+  }
+  return 0;
 }
 
 function handleTreePanel(
@@ -270,7 +281,7 @@ function handleDiffPanel(
     if (input === 'G') { moveCursor(fMax); return true; }
     if (input === 'f') { setters.setFocusMode(v => !v); return true; }
     // Block keys that have no effect in full-file view
-    if ('{}'.includes(input) || 'cx?soN'.includes(input)) return true;
+    if ('{}'.includes(input) || 'cx?sN'.includes(input)) return true;
     if (input === 'n' && selectedFile) {
       const { flatTree, fileProgress: fp, diffs: dm } = context;
       const curIdx = flatTree.findIndex(item => !item.isFolder && item.node.id === selectedFile);
@@ -302,29 +313,40 @@ function handleDiffPanel(
   if (input === 'g') { moveCursor(0); return true; }
   if (input === 'G') { moveCursor(maxIdx); return true; }
 
+  // {/} hunk nav: jump to first line of previous/next method block
   if (input === '{') {
-    for (let j = diffCursor - 1; j >= 0; j--) {
-      if (diffRows[j].type === 'hunkHeader') { moveCursor(j); return true; }
+    const curMethod = diffRows[diffCursor]?.method;
+    // Skip backwards past current method, then find start of previous method
+    let j = diffCursor - 1;
+    while (j >= 0 && diffRows[j].method === curMethod) j--;
+    if (j >= 0) {
+      const targetMethod = diffRows[j].method;
+      while (j > 0 && diffRows[j - 1].method === targetMethod) j--;
+      moveCursor(j);
     }
     return true;
   }
   if (input === '}') {
+    const curMethod = diffRows[diffCursor]?.method;
     for (let j = diffCursor + 1; j < diffRows.length; j++) {
-      if (diffRows[j].type === 'hunkHeader') { moveCursor(j); return true; }
+      if (diffRows[j].method !== curMethod) { moveCursor(j); return true; }
     }
     return true;
   }
 
   if (input === 's') { setters.onToggleDiffMode?.(); return true; }
-  if (input === 'o') { setters.setSortByCrit(v => !v); setters.setDiffCursor(() => 0); setters.setDiffScroll(() => 0); return true; }
   if (input === 'f') { setters.setFocusMode(v => !v); return true; }
 
-  // n: next unreviewed block, then next file
+  // n: next unreviewed method block, then next file
   if (input === 'n') {
     const mrs = context.methodReviewStatus;
+    const curMethod = diffRows[diffCursor]?.method;
+    let passedCurrent = false;
     for (let j = diffCursor + 1; j < diffRows.length; j++) {
       const row = diffRows[j];
-      if (row.type === 'hunkHeader' && j + 1 < diffRows.length && diffRows[j + 1].type === 'diffRow' && !mrs?.get(row.method)) {
+      if (row.method !== curMethod) passedCurrent = true;
+      // First line of a new unreviewed method
+      if (passedCurrent && row.method !== diffRows[j - 1]?.method && !mrs?.get(row.method)) {
         moveCursor(j);
         return true;
       }
@@ -352,17 +374,6 @@ function handleDiffPanel(
   }
 
   const curRow = diffRows[diffCursor];
-
-  // Hunk-level flag: cursor on hunkHeader
-  if (curRow?.type === 'hunkHeader' && selectedFile) {
-    if (input === 'c' || input === 'x' || input === '?') {
-      const flag: LineFlag = input === 'c' ? 'ok' : input === 'x' ? 'bug' : 'question';
-      const keys = getHunkLines(diffRows, diffCursor, selectedFile);
-      const count = batchFlagSafe(keys, flag, context.lineReviews, setters.setLineFlagBatch);
-      emitBatchMsg(count, flag, curRow.method, setters.setBatchMsg);
-      return true;
-    }
-  }
 
   // Line-level flag + comment
   if (curRow?.type === 'diffRow' && curRow.reviewLine && selectedFile) {
@@ -399,7 +410,7 @@ function handleContextPanel(
       const chunk = filtered[newIdx];
       if (chunk?.fileId === state.selectedFile) {
         const targetIdx = context.diffRows.findIndex(
-          r => r.type === 'hunkHeader' && r.method === chunk.method,
+          r => r.method === chunk.method,
         );
         if (targetIdx >= 0) {
           setDiffCursor(() => targetIdx);
@@ -437,10 +448,10 @@ function handleContextPanel(
   }
 
   if (key.return) {
-    const navigateToFile = (fileId: string, hunkIdx?: number) => {
+    const navigateToFile = (fileId: string, method?: string) => {
       if (state.selectedFile) setters.historyPush?.({ fileId: state.selectedFile, cursor: state.diffCursor });
       setSelectedFile(fileId);
-      const cursor = hunkIdx ?? 0;
+      const cursor = method ? findMethodNavIdx(diffs, fileId, method) : 0;
       setDiffCursor(() => cursor);
       setDiffScroll(() => cursor);
       setPanel(() => 1);
@@ -449,7 +460,7 @@ function handleContextPanel(
     if (ctxIdx < filtered.length) {
       // CHANGES section
       const chunk = filtered[ctxIdx];
-      if (chunk?.fileId && diffs.has(chunk.fileId)) navigateToFile(chunk.fileId, chunk.hunkIndex);
+      if (chunk?.fileId && diffs.has(chunk.fileId)) navigateToFile(chunk.fileId, chunk.method);
     } else if (ctxIdx < filtered.length + allImports.length) {
       // IMPORTS section
       const imp = allImports[ctxIdx - filtered.length];

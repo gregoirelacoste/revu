@@ -58,20 +58,6 @@ function computeMethodReviewStatus(
   return status;
 }
 
-function sortDiffRowsByCrit(rows: DiffRow[]): DiffRow[] {
-  const groups: DiffRow[][] = [];
-  let current: DiffRow[] = [];
-  for (const row of rows) {
-    if (row.type === 'hunkHeader' && current.length > 0) {
-      groups.push(current);
-      current = [];
-    }
-    current.push(row);
-  }
-  if (current.length > 0) groups.push(current);
-  groups.sort((a, b) => (b[0]?.methodCrit ?? 0) - (a[0]?.methodCrit ?? 0));
-  return groups.flat();
-}
 
 interface AppProps {
   initialData: ScanResult;
@@ -134,7 +120,6 @@ export function App({ initialData, rootDir, rescan }: AppProps) {
   const [showHelp, setShowHelp] = useState(false);
   const [explorerToggle, setExplorerToggle] = useState<0 | 1>(0);
   const [diffToggle, setDiffToggle] = useState<0 | 1 | 2>(0);
-  const [sortByCrit, setSortByCrit] = useState(false);
   const [aiScoringActive, setAiScoringActive] = useState(false);
   const [resetPrompt, setResetPrompt] = useState(false);
   const [showMap, setShowMap] = useState(false);
@@ -455,26 +440,33 @@ export function App({ initialData, rootDir, rescan }: AppProps) {
   );
   const activeDiffRows = effectiveMode === 'unified' ? unifiedRows : (currentDiff?.rows ?? []);
 
-  // Optionally reorder by criticality
-  const orderedDiffRows = useMemo(
-    () => sortByCrit ? sortDiffRowsByCrit(activeDiffRows) : activeDiffRows,
-    [activeDiffRows, sortByCrit],
-  );
-
   // Per-method review status: true = all flaggable lines flagged
   const methodReviewStatus = useMemo(() => {
     if (!activeFile) return new Map<string, boolean>();
-    return computeMethodReviewStatus(orderedDiffRows, activeFile, lineReviews);
-  }, [orderedDiffRows, activeFile, lineReviews]);
+    return computeMethodReviewStatus(activeDiffRows, activeFile, lineReviews);
+  }, [activeDiffRows, activeFile, lineReviews]);
 
   // Diff toggle: 0=hide reviewed methods, 1=all blocks expanded, 2=full file view
+  // Always filter out hunkHeaders — method info shown on right margin instead
   const navDiffRows = useMemo((): DiffRow[] => {
-    if (diffToggle === 0) {
-      return orderedDiffRows.filter(row => !methodReviewStatus.get(row.method));
+    const base = diffToggle === 0
+      ? activeDiffRows.filter(row => row.type !== 'hunkHeader' && !methodReviewStatus.get(row.method))
+      : activeDiffRows.filter(row => row.type !== 'hunkHeader');
+    return base;
+  }, [diffToggle, activeDiffRows, methodReviewStatus]);
+
+  // Track which rows are the first line of a method block (for right-margin annotation)
+  const methodStartRows = useMemo(() => {
+    const starts = new Set<number>();
+    let prev = '';
+    for (let i = 0; i < navDiffRows.length; i++) {
+      if (navDiffRows[i].method !== prev) {
+        starts.add(i);
+        prev = navDiffRows[i].method;
+      }
     }
-    // t=1 and t=2: show all blocks expanded
-    return orderedDiffRows;
-  }, [diffToggle, orderedDiffRows, methodReviewStatus]);
+    return starts;
+  }, [navDiffRows]);
 
   // Clamp diffCursor when switching files or mode
   const fullFileLineCount = fullFileLines?.length ?? 0;
@@ -554,8 +546,8 @@ export function App({ initialData, rootDir, rescan }: AppProps) {
   });
 
   useNavigation(
-    { panel, treeIdx: safeIdx, selectedFile, diffScroll, diffCursor: safeDiffCursor, ctxIdx, minCrit, collapsed, inputMode, searchQuery, showHelp, explorerToggle, diffToggle, sortByCrit, focusMode, resetPrompt, showMap, mapNodeIdx, showComments, commentIdx },
-    { setPanel, setTreeIdx, setSelectedFile, setDiffScroll, setDiffCursor, setCtxIdx, setMinCrit, setLineFlag, setLineFlagBatch, setBatchMsg: handleBatchMsg, setCollapsed, setInputMode, setSearchQuery, setShowHelp, setExplorerToggle, setDiffToggle, setSortByCrit, setFocusMode, setResetPrompt, setShowMap, setMapNodeIdx, setShowComments, setCommentIdx, onExport: handleExport, onOpenNotes: handleOpenNotes, onToggleDiffMode: handleToggleDiffMode, onToggleAIScoring: handleToggleAIScoring, onResetReview: handleResetReview, onRescan: triggerRescan, historyPush: history.push, historyGoBack: history.goBack, historyGoForward: history.goForward },
+    { panel, treeIdx: safeIdx, selectedFile, diffScroll, diffCursor: safeDiffCursor, ctxIdx, minCrit, collapsed, inputMode, searchQuery, showHelp, explorerToggle, diffToggle, focusMode, resetPrompt, showMap, mapNodeIdx, showComments, commentIdx },
+    { setPanel, setTreeIdx, setSelectedFile, setDiffScroll, setDiffCursor, setCtxIdx, setMinCrit, setLineFlag, setLineFlagBatch, setBatchMsg: handleBatchMsg, setCollapsed, setInputMode, setSearchQuery, setShowHelp, setExplorerToggle, setDiffToggle, setFocusMode, setResetPrompt, setShowMap, setMapNodeIdx, setShowComments, setCommentIdx, onExport: handleExport, onOpenNotes: handleOpenNotes, onToggleDiffMode: handleToggleDiffMode, onToggleAIScoring: handleToggleAIScoring, onResetReview: handleResetReview, onRescan: triggerRescan, historyPush: history.push, historyGoBack: history.goBack, historyGoForward: history.goForward },
     { flatTree, diffRows: navDiffRows, diffs, ctx, bodyH, lineReviews, fileProgress, methodMapData, commentData, methodReviewStatus, fullFileLineCount },
   );
 
@@ -572,13 +564,12 @@ export function App({ initialData, rootDir, rescan }: AppProps) {
     const isMulti = data.repos.length > 1;
     const prefix = isMulti && repo ? `${repo} \u203A ` : '';
     const toggleTag = diffToggle === 0 ? '' : diffToggle === 1 ? ' all' : ' file';
-    const sortTag = sortByCrit ? ' crit' : '';
-    const fullLabel = `${prefix}${currentDiff.path} (${modeTag}${toggleTag}${sortTag})`;
+    const fullLabel = `${prefix}${currentDiff.path} (${modeTag}${toggleTag})`;
     const maxLabelW = diffW - 4;
     return fullLabel.length > maxLabelW
       ? '\u2026' + fullLabel.slice(fullLabel.length - maxLabelW + 1)
       : fullLabel;
-  }, [currentDiff, activeFile, fileToRepo, data.repos.length, modeTag, diffToggle, sortByCrit, diffW]);
+  }, [currentDiff, activeFile, fileToRepo, data.repos.length, modeTag, diffToggle, diffW]);
 
   // Explorer label — show current repo
   const explorerLabel = currentRepo ? `EXPLORER \u00B7 ${currentRepo}` : 'EXPLORER';
@@ -661,42 +652,43 @@ export function App({ initialData, rootDir, rescan }: AppProps) {
             <Box flexDirection="column" overflow="hidden">
               {visibleDiffRows.map((row, i) => {
                 const rowIndex = diffScroll + i;
-                if (row.type === 'hunkHeader') {
-                  const hc = critColor(row.methodCrit);
-                  const isCur = panel === 1 && rowIndex === safeDiffCursor;
-                  return (
-                    <Box key={`h${i}`}>
-                      <Text color={isCur ? C.accent : C.dim}>{isCur ? '\u25B6 ' : '\u2500\u2500 '}</Text>
-                      <Text color={hc} bold>{row.label}</Text>
-                      <Text color={C.dim}> · </Text>
-                      <Text color={C.bright}>{row.method}</Text>
-                      <Text color={C.dim}> · </Text>
-                      <Text color={hc} bold>{row.methodCrit.toFixed(1)}</Text>
-                    </Box>
-                  );
-                }
-
                 const lineKey = row.reviewLine ? `${activeFile}:${row.reviewLine.n}` : '';
                 const review = lineReviews.get(lineKey);
                 const flag = review?.flag;
                 const comments = review?.comments ?? [];
                 const isCur = panel === 1 && rowIndex === safeDiffCursor;
+                const isFlaggable = row.reviewLine && (row.reviewLine.t === 'add' || row.reviewLine.t === 'del');
+                const isMethodStart = methodStartRows.has(rowIndex);
+                const isNew = isMethodStart && row.label.startsWith('New');
+
+                // Right margin: N + crit(4) + flag(2) = 7 chars
+                const rightMargin = (
+                  <>
+                    {isMethodStart ? (
+                      <>
+                        <Text color={isNew ? C.cyan : C.dim}>{isNew ? 'N' : ' '}</Text>
+                        <Text color={critColor(row.methodCrit)} bold>{row.methodCrit.toFixed(1).padStart(4)}</Text>
+                      </>
+                    ) : (
+                      <Text>{' '.repeat(5)}</Text>
+                    )}
+                    {isFlaggable ? (
+                      <Text color={flag ? (FLAG_COLOR[flag] ?? C.dim) : C.dim}>
+                        {flag ? ` ${FLAG_ICON[flag]}` : ' \u25CB'}
+                      </Text>
+                    ) : (
+                      <Text>{'  '}</Text>
+                    )}
+                  </>
+                );
 
                 if (effectiveMode === 'unified') {
-                  // Unified: single line, full width
                   const line = row.baseLine ?? row.reviewLine ?? null;
-                  const isFlaggable = row.reviewLine && (row.reviewLine.t === 'add' || row.reviewLine.t === 'del');
                   return (
                     <Box key={`d${i}`} flexDirection="column">
                       <Box>
-                        <DLine line={line} width={diffW - 6} isCursor={isCur} flag={flag} syntaxTheme={syntaxTheme} />
-                        {isFlaggable ? (
-                          <Text color={flag ? (FLAG_COLOR[flag] ?? C.dim) : C.dim}>
-                            {flag ? ` ${FLAG_ICON[flag]}` : ' \u25CB'}
-                          </Text>
-                        ) : (
-                          <Text>{'  '}</Text>
-                        )}
+                        <DLine line={line} width={diffW - 10} isCursor={isCur} flag={flag} syntaxTheme={syntaxTheme} />
+                        {rightMargin}
                       </Box>
                       {(comments.length > 0 || inputMode?.lineKey === lineKey) && (
                         <CommentRows comments={comments} inputMode={inputMode} lineKey={lineKey} width={diffW} />
@@ -713,16 +705,10 @@ export function App({ initialData, rootDir, rescan }: AppProps) {
                         <DLine line={row.baseLine ?? null} width={halfDiff} isCursor={false} syntaxTheme={syntaxTheme} />
                       </Box>
                       <Text color={C.border}>{'\u2502'}</Text>
-                      <Box width={halfDiff}>
-                        <DLine line={row.reviewLine ?? null} width={halfDiff - 4} isCursor={isCur} flag={flag} syntaxTheme={syntaxTheme} />
+                      <Box width={halfDiff - 8}>
+                        <DLine line={row.reviewLine ?? null} width={halfDiff - 8} isCursor={isCur} flag={flag} syntaxTheme={syntaxTheme} />
                       </Box>
-                      {row.reviewLine && (row.reviewLine.t === 'add' || row.reviewLine.t === 'del') ? (
-                        <Text color={flag ? (FLAG_COLOR[flag] ?? C.dim) : C.dim}>
-                          {flag ? ` ${FLAG_ICON[flag]}` : ' \u25CB'}
-                        </Text>
-                      ) : (
-                        <Text>{'  '}</Text>
-                      )}
+                      {rightMargin}
                     </Box>
                     {(comments.length > 0 || inputMode?.lineKey === lineKey) && (
                       <CommentRows comments={comments} inputMode={inputMode} lineKey={lineKey} width={diffW} />
@@ -760,7 +746,7 @@ export function App({ initialData, rootDir, rescan }: AppProps) {
       {showHelp && <HelpOverlay width={size.w} height={bodyH} />}
 
       {/* Status bar */}
-      <StatusBar repoCount={data.repos.length} stats={globalStats} sideEffects={sideEffectCount} width={size.w} exportMsg={exportMsg} batchMsg={batchMsg} canGoBack={history.canGoBack} canGoForward={history.canGoForward} aiScoring={aiScoringActive} stale={stale} isScanning={isScanning} explorerToggle={explorerToggle} diffToggle={diffToggle} sortByCrit={sortByCrit} />
+      <StatusBar repoCount={data.repos.length} stats={globalStats} sideEffects={sideEffectCount} width={size.w} exportMsg={exportMsg} batchMsg={batchMsg} canGoBack={history.canGoBack} canGoForward={history.canGoForward} aiScoring={aiScoringActive} stale={stale} isScanning={isScanning} explorerToggle={explorerToggle} diffToggle={diffToggle} />
     </Box>
   );
 }
