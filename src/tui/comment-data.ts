@@ -3,13 +3,18 @@
 import type { TuiFileDiff, LineFlag, LineComment } from './types.js';
 import type { LineReview } from './hooks/useReview.js';
 
+export interface CommentText {
+  text: string;
+  time: string;
+}
+
 export interface CommentEntry {
   fileId: string;
   fileName: string;
   fileCrit: number;
   method: string;
   flag: LineFlag;
-  comments: string[];
+  comments: CommentText[];
   diffRowIdx: number;       // first flagged row → jump target
 }
 
@@ -60,7 +65,7 @@ export function collectAllComments(
       const existing = map.get(groupKey);
       if (existing) {
         existing.flag = mergeFlags(existing.flag, lr.flag);
-        for (const c of lr.comments) existing.comments.push(c.text);
+        for (const c of lr.comments) existing.comments.push({ text: c.text, time: c.time });
       } else {
         map.set(groupKey, {
           fileId,
@@ -68,7 +73,7 @@ export function collectAllComments(
           fileCrit: diff.crit,
           method: row.method,
           flag: lr.flag,
-          comments: lr.comments.map(c => c.text),
+          comments: lr.comments.map(c => ({ text: c.text, time: c.time })),
           diffRowIdx: navIdx,
         });
       }

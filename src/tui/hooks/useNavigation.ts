@@ -1,7 +1,7 @@
 // ── Keyboard navigation hook ──
 
 import { useInput, useApp, type Key } from 'ink';
-import type { FlatItem, DiffRow, TuiFileDiff, ContextData, LineFlag } from '../types.js';
+import type { FlatItem, DiffRow, TuiFileDiff, ContextData, LineFlag, MapMode, ClusterMapData } from '../types.js';
 import type { LineReview } from './useReview.js';
 import type { InputMode } from './useInputMode.js';
 import type { NavPos } from './useNavHistory.js';
@@ -27,6 +27,9 @@ interface NavState {
   resetPrompt: boolean;
   showMap: boolean;
   mapNodeIdx: number;
+  mapMode: MapMode;
+  clusterIdx: number;
+  fileIdxInCluster: number;
   showComments: boolean;
   commentIdx: number;
 }
@@ -51,6 +54,9 @@ interface NavSetters {
   setFocusMode: (fn: (v: boolean) => boolean) => void;
   setShowMap: (fn: (v: boolean) => boolean) => void;
   setMapNodeIdx: (fn: (v: number) => number) => void;
+  setMapMode: (v: MapMode) => void;
+  setClusterIdx: (fn: (v: number) => number) => void;
+  setFileIdxInCluster: (fn: (v: number) => number) => void;
   setShowComments: (fn: (v: boolean) => boolean) => void;
   setCommentIdx: (fn: (v: number) => number) => void;
   onRescan?: () => void;
@@ -74,6 +80,7 @@ interface NavContext {
   lineReviews: Map<string, LineReview>;
   fileProgress: Map<string, 'none' | 'partial' | 'complete'>;
   methodMapData: MethodMapData | null;
+  clusterMapData: ClusterMapData | null;
   commentData: CommentListData | null;
   methodReviewStatus?: Map<string, boolean>;
   fullFileLineCount?: number;
@@ -508,25 +515,100 @@ export function useNavigation(
         return;
       }
 
-      // Method map overlay
+      // Map overlay (overview + focus modes)
       if (state.showMap) {
         if (input === 'm' || key.escape) { setters.setShowMap(() => false); return; }
-        const md = context.methodMapData;
-        if (!md) return;
 
-        const navNodes = getMapNavNodes(md);
-        const maxIdx = Math.max(0, navNodes.length - 1);
-        if (key.upArrow) { setters.setMapNodeIdx(i => Math.max(0, i - 1)); return; }
-        if (key.downArrow) { setters.setMapNodeIdx(i => Math.min(maxIdx, i + 1)); return; }
-        if (key.return) {
-          const node = navNodes[state.mapNodeIdx];
-          if (node?.fileId && context.diffs.has(node.fileId)) {
-            setters.setShowMap(() => false);
-            if (state.selectedFile) setters.historyPush?.({ fileId: state.selectedFile, cursor: state.diffCursor });
-            setters.setSelectedFile(node.fileId);
-            setters.setDiffScroll(() => 0);
-            setters.setDiffCursor(() => 0);
-            setters.setPanel(() => 1);
+        // ── Overview mode ──
+        if (state.mapMode === 'overview') {
+          const cd = context.clusterMapData;
+          if (!cd) return;
+
+          // Scope to repo containing selected file (same logic as overlay)
+          const repo = state.selectedFile
+            ? cd.repos.find(r => r.clusters.some(c => c.files.some(f => f.fileId === state.selectedFile))
+                || r.standalone.some(f => f.fileId === state.selectedFile))
+              ?? cd.repos[0]
+            : cd.repos[0];
+          if (!repo) return;
+          const clusters = repo.clusters;
+          const maxCluster = Math.max(0, clusters.length - 1);
+
+          if (key.upArrow) { setters.setClusterIdx(i => Math.max(0, i - 1)); setters.setFileIdxInCluster(() => 0); return; }
+          if (key.downArrow) { setters.setClusterIdx(i => Math.min(maxCluster, i + 1)); setters.setFileIdxInCluster(() => 0); return; }
+          if (key.leftArrow) {
+            setters.setFileIdxInCluster(i => Math.max(0, i - 1));
+            return;
+          }
+          if (key.rightArrow) {
+            const cluster = clusters[state.clusterIdx];
+            if (cluster) setters.setFileIdxInCluster(i => Math.min(cluster.files.length - 1, i + 1));
+            return;
+          }
+
+          // Tab → switch to focus mode
+          if (key.tab) {
+            const cluster = clusters[state.clusterIdx];
+            const file = cluster?.files[state.fileIdxInCluster];
+            if (file) setters.setSelectedFile(file.fileId);
+            setters.setMapMode('focus');
+            setters.setMapNodeIdx(() => 0);
+            return;
+          }
+
+          // Enter → jump to selected file
+          if (key.return) {
+            const cluster = clusters[state.clusterIdx];
+            const file = cluster?.files[state.fileIdxInCluster];
+            if (file && context.diffs.has(file.fileId)) {
+              setters.setShowMap(() => false);
+              if (state.selectedFile) setters.historyPush?.({ fileId: state.selectedFile, cursor: state.diffCursor });
+              setters.setSelectedFile(file.fileId);
+              setters.setDiffScroll(() => 0);
+              setters.setDiffCursor(() => 0);
+              setters.setPanel(() => 1);
+            }
+            return;
+          }
+
+          // n → next unreviewed file (within this repo's clusters)
+          if (input === 'n') {
+            for (let ci = 0; ci < clusters.length; ci++) {
+              const f = clusters[ci].files.find(f => f.progress !== 'complete');
+              if (f) {
+                setters.setClusterIdx(() => ci);
+                setters.setFileIdxInCluster(() => clusters[ci].files.indexOf(f));
+                return;
+              }
+            }
+            return;
+          }
+          return;
+        }
+
+        // ── Focus mode ──
+        if (state.mapMode === 'focus') {
+          // Tab → back to overview
+          if (key.tab) { setters.setMapMode('overview'); return; }
+
+          const md = context.methodMapData;
+          if (!md) return;
+
+          const navNodes = getMapNavNodes(md);
+          const maxIdx = Math.max(0, navNodes.length - 1);
+          if (key.upArrow) { setters.setMapNodeIdx(i => Math.max(0, i - 1)); return; }
+          if (key.downArrow) { setters.setMapNodeIdx(i => Math.min(maxIdx, i + 1)); return; }
+          if (key.return) {
+            const node = navNodes[state.mapNodeIdx];
+            if (node?.fileId && context.diffs.has(node.fileId)) {
+              setters.setShowMap(() => false);
+              if (state.selectedFile) setters.historyPush?.({ fileId: state.selectedFile, cursor: state.diffCursor });
+              setters.setSelectedFile(node.fileId);
+              setters.setDiffScroll(() => 0);
+              setters.setDiffCursor(() => 0);
+              setters.setPanel(() => 1);
+            }
+            return;
           }
           return;
         }
@@ -593,7 +675,11 @@ export function useNavigation(
         } else { return; }
       }
 
-      if (input === 'm') { if (state.selectedFile) { setters.setShowMap(() => true); setters.setMapNodeIdx(() => 0); } return; }
+      if (input === 'm') {
+        if (state.showMap) { setters.setShowMap(() => false); }
+        else { setters.setShowMap(() => true); setters.setMapMode('overview'); setters.setClusterIdx(() => 0); setters.setFileIdxInCluster(() => 0); }
+        return;
+      }
       if (input === 'l') { setters.setShowComments(() => true); setters.setCommentIdx(() => 0); return; }
       if (input === 'r') { setters.onRescan?.(); return; }
       if (input === 'q') { exit(); return; }

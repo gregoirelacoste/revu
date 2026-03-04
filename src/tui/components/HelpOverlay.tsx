@@ -18,7 +18,7 @@ const SECTIONS: { title: string; keys: [string, string][] }[] = [
       ['t', 'Toggle view (3 states)'],
       ['/', 'Fuzzy search (explorer)'],
       ['l', 'Comments list'],
-      ['m', 'Dependency map (on selected file)'],
+      ['m', 'Review Map (global overview)'],
       ['r', 'Reload (manual rescan)'],
     ],
   },
@@ -58,21 +58,14 @@ const SECTIONS: { title: string; keys: [string, string][] }[] = [
     ],
   },
   {
-    title: 'MAP',
+    title: 'MAP (m)',
     keys: [
-      ['\u2191\u2193', 'Navigate dependencies'],
-      ['Enter', 'Jump to file (if changed)'],
+      ['\u2191\u2193', 'Navigate clusters'],
+      ['\u2190\u2192', 'Navigate files in cluster'],
+      ['Tab', 'Toggle overview \u2194 focus'],
+      ['Enter', 'Jump to file'],
+      ['n', 'Next unreviewed file'],
       ['Esc / m', 'Close map'],
-    ],
-  },
-  {
-    title: 'TOGGLE (t)',
-    keys: [
-      ['Explorer 0', 'Unreviewed files only'],
-      ['Explorer 1', 'All changed files'],
-      ['Diff 0', 'Unreviewed blocks only'],
-      ['Diff 1', 'All blocks expanded'],
-      ['Diff 2', 'Full file view'],
     ],
   },
   {

@@ -1,11 +1,12 @@
+// ── Focus Mode: file dependency map with box layout ──
+
 import React from 'react';
 import { Box, Text } from 'ink';
-import { C, TYPE_ICON } from '../colors.js';
+import { C, critColor, TYPE_ICON } from '../colors.js';
 import type { MethodMapData, MethodMapNode } from '../method-map-data.js';
 import { getMapNavNodes } from '../method-map-data.js';
 
 const BG = '#0a1628';
-const SEP = ' \u2502 '; // ' │ '
 
 interface Props {
   data: MethodMapData;
@@ -14,55 +15,115 @@ interface Props {
   nodeIdx: number;
 }
 
-// Pad/truncate string to exact length
-function rpad(s: string, len: number): string {
-  if (s.length >= len) return s.slice(0, len);
-  return s + ' '.repeat(len - s.length);
+function pad(s: string, len: number): string {
+  return s.length >= len ? s.slice(0, len) : s + ' '.repeat(len - s.length);
 }
 
 function typeTag(fileType: string): string {
   return TYPE_ICON[fileType]?.icon ?? fileType.slice(0, 4);
 }
 
-function nodeNameLine(node: MethodMapNode, colW: number, isCurrent: boolean): string {
-  const prefix = isCurrent ? '\u25B6 ' : '  ';
-  const maxLen = colW - 2;
-  const name = node.fileName.length > maxLen
-    ? node.fileName.slice(0, maxLen - 1) + '\u2026'
-    : node.fileName;
-  return rpad(prefix + name, colW);
+function typeColor(fileType: string): string {
+  return TYPE_ICON[fileType]?.color ?? C.dim;
 }
 
-function nodeDetailLine(node: MethodMapNode, colW: number): string {
-  const critStr = node.crit !== undefined ? ` ${node.crit.toFixed(1)}` : '';
-  const edgeMark = node.edgeType === 'inject' ? ' \u25C6' : '';
-  return rpad(`  ${typeTag(node.fileType)}${critStr}${edgeMark}`, colW);
-}
+// ── Small node box (upstream/downstream) ──
+function NodeBox({ node, isCur, boxW }: { node: MethodMapNode; isCur: boolean; boxW: number }) {
+  const innerW = boxW - 2;
+  const borderColor = isCur ? C.accent : C.border;
+  const nameMax = innerW - 6;
+  const name = node.fileName.length > nameMax ? node.fileName.slice(0, nameMax - 1) + '\u2026' : node.fileName;
+  const critStr = node.crit !== undefined ? node.crit.toFixed(1) : '';
+  const edgeMark = node.edgeType === 'inject' ? '\u25C6' : '';
+  const changedMark = node.isChanged ? '\u25CF' : '';
 
-interface TriRow {
-  left: string; lc: string; lb?: boolean;
-  mid: string;  mc: string; mb?: boolean;
-  right: string; rc: string; rb?: boolean;
-}
-
-function Row({ r, colW, focusColW, totalW }: { r: TriRow; colW: number; focusColW: number; totalW: number }) {
-  const used = 1 + colW + SEP.length + focusColW + SEP.length + colW;
-  const fill = ' '.repeat(Math.max(0, totalW - used));
   return (
-    <Box>
-      <Text backgroundColor={BG}>{' '}</Text>
-      <Text backgroundColor={BG} color={r.lc} bold={r.lb}>{r.left}</Text>
-      <Text backgroundColor={BG} color={C.border}>{SEP}</Text>
-      <Text backgroundColor={BG} color={r.mc} bold={r.mb}>{r.mid}</Text>
-      <Text backgroundColor={BG} color={C.border}>{SEP}</Text>
-      <Text backgroundColor={BG} color={r.rc} bold={r.rb}>{r.right}</Text>
-      <Text backgroundColor={BG}>{fill}</Text>
+    <Box flexDirection="column">
+      <Text backgroundColor={BG} color={borderColor}>
+        {'\u250C'}{'\u2500'.repeat(innerW)}{'\u2510'}
+      </Text>
+      <Box>
+        <Text backgroundColor={BG} color={borderColor}>{'\u2502'}</Text>
+        <Text backgroundColor={BG} color={isCur ? C.accent : typeColor(node.fileType)} bold={isCur}>
+          {isCur ? '\u25B6' : typeTag(node.fileType)}
+        </Text>
+        <Text backgroundColor={BG} color={isCur ? C.white : (node.isChanged ? C.orange : C.text)} bold={isCur}>
+          {' '}{pad(name, nameMax)}
+        </Text>
+        <Text backgroundColor={BG} color={borderColor}>{'\u2502'}</Text>
+      </Box>
+      <Box>
+        <Text backgroundColor={BG} color={borderColor}>{'\u2502'}</Text>
+        <Text backgroundColor={BG} color={node.isChanged ? C.orange : C.dim}>{changedMark ? ` ${changedMark}` : '  '}</Text>
+        <Text backgroundColor={BG} color={critColor(node.crit ?? 0)}>{critStr.padStart(4)}</Text>
+        <Text backgroundColor={BG} color={C.purple}>{edgeMark ? ` ${edgeMark}` : '  '}</Text>
+        <Text backgroundColor={BG}>{' '.repeat(Math.max(0, innerW - 8))}</Text>
+        <Text backgroundColor={BG} color={borderColor}>{'\u2502'}</Text>
+      </Box>
+      <Text backgroundColor={BG} color={borderColor}>
+        {'\u2514'}{'\u2500'.repeat(innerW)}{'\u2518'}
+      </Text>
     </Box>
   );
 }
 
-function BlankRow({ totalW }: { totalW: number }) {
-  return <Text backgroundColor={BG}>{' '.repeat(totalW)}</Text>;
+// ── Focus node (center, large box) ──
+function FocusBox({ data, focusColW }: { data: MethodMapData; focusColW: number }) {
+  const innerW = focusColW - 2;
+  const nameMax = innerW - 2;
+  const name = data.focus.fileName.length > nameMax
+    ? data.focus.fileName.slice(0, nameMax - 1) + '\u2026'
+    : data.focus.fileName;
+  const critStr = data.focus.crit !== undefined ? data.focus.crit.toFixed(1) : '';
+
+  return (
+    <Box flexDirection="column">
+      <Text backgroundColor={BG} color={C.accent}>
+        {'\u250C'}{'\u2500'.repeat(innerW)}{'\u2510'}
+      </Text>
+      <Box>
+        <Text backgroundColor={BG} color={C.accent}>{'\u2502'}</Text>
+        <Text backgroundColor={BG} color={C.accent} bold>{' \u25CF '}{pad(name, innerW - 3)}</Text>
+        <Text backgroundColor={BG} color={C.accent}>{'\u2502'}</Text>
+      </Box>
+      {data.focusMethod && (
+        <Box>
+          <Text backgroundColor={BG} color={C.accent}>{'\u2502'}</Text>
+          <Text backgroundColor={BG} color={C.purple}>{' \u0192 '}{pad(data.focusMethod, innerW - 3)}</Text>
+          <Text backgroundColor={BG} color={C.accent}>{'\u2502'}</Text>
+        </Box>
+      )}
+      <Box>
+        <Text backgroundColor={BG} color={C.accent}>{'\u2502'}</Text>
+        <Text backgroundColor={BG} color={typeColor(data.focus.fileType)}>{' '}{typeTag(data.focus.fileType)}</Text>
+        <Text backgroundColor={BG} color={critColor(data.focus.crit ?? 0)}>{' '}{critStr}</Text>
+        <Text backgroundColor={BG}>{' '.repeat(Math.max(0, innerW - critStr.length - 4))}</Text>
+        <Text backgroundColor={BG} color={C.accent}>{'\u2502'}</Text>
+      </Box>
+      <Text backgroundColor={BG} color={C.accent}>
+        {'\u2514'}{'\u2500'.repeat(innerW)}{'\u2518'}
+      </Text>
+    </Box>
+  );
+}
+
+// ── Arrow connectors ──
+function Arrow({ dir, inject, w }: { dir: 'left' | 'right'; inject: boolean; w: number }) {
+  const arrowW = Math.max(3, w);
+  if (dir === 'left') {
+    const line = '\u2500'.repeat(arrowW - 1);
+    return (
+      <Text backgroundColor={BG} color={inject ? C.purple : C.border}>
+        {inject ? '\u25C6' : ' '}{line}{'\u25B6'}
+      </Text>
+    );
+  }
+  const line = '\u2500'.repeat(arrowW - 1);
+  return (
+    <Text backgroundColor={BG} color={inject ? C.purple : C.border}>
+      {'\u25C0'}{line}{inject ? '\u25C6' : ' '}
+    </Text>
+  );
 }
 
 export function MethodMapOverlay({ data, width, height, nodeIdx }: Props) {
@@ -77,146 +138,97 @@ export function MethodMapOverlay({ data, width, height, nodeIdx }: Props) {
   const upOffset = 0;
   const downOffset = upNodes.length;
 
-  // Layout: 1(margin) + colW + 3(sep) + focusColW + 3(sep) + colW = width
-  const colW = Math.max(16, Math.floor((width - 8) / 3));
-  const focusColW = Math.max(14, width - 1 - colW * 2 - SEP.length * 2);
+  // Layout: colW(side) + arrowW + focusColW + arrowW + colW(side)
+  const arrowW = 4;
+  const colW = Math.max(18, Math.floor((width - arrowW * 2 - 2) / 3));
+  const focusColW = Math.max(16, width - colW * 2 - arrowW * 2 - 2);
 
   const maxRows = Math.max(1, upNodes.length, downNodes.length);
-  const maxVisible = Math.min(maxRows, height - 9);
+  const maxVisible = Math.min(maxRows, Math.floor((height - 6) / 4));
 
   // Header
-  const title = `METHOD MAP \u00B7 ${data.focus.fileName}${data.focusMethod ? ` \u00B7 ${data.focusMethod}` : ''}`;
+  const title = `FOCUS \u00B7 ${data.focus.fileName}${data.focusMethod ? ` \u00B7 ${data.focusMethod}` : ''} \u00B7 ${(data.focus.crit ?? 0).toFixed(1)}`;
   const hStr = title.length > width - 4 ? '\u2026' + title.slice(title.length - (width - 5)) : title;
   const hFill = ' '.repeat(Math.max(0, width - hStr.length - 2));
 
   const curNode = navNodes[nodeIdx];
   const canJump = !!curNode?.fileId;
 
-  // Focus card: up to 3 lines (name, optionally method, type)
-  const focusLines: Array<{ text: string; color: string; bold?: boolean }> = [];
-  focusLines.push({ text: rpad(`\u25CF ${data.focus.fileName}`, focusColW), color: C.accent, bold: true });
-  if (data.focusMethod) {
-    focusLines.push({ text: rpad(` \u0192 ${data.focusMethod}`, focusColW), color: C.purple });
-  }
-  const focusCritStr = data.focus.crit !== undefined ? ` ${data.focus.crit.toFixed(1)}` : '';
-  focusLines.push({ text: rpad(` ${typeTag(data.focus.fileType)}${focusCritStr}`, focusColW), color: C.blue });
-
-  // Separator
-  const sepStr = ' ' + '\u2500'.repeat(colW) + '\u2500\u253C\u2500' + '\u2500'.repeat(focusColW) + '\u2500\u253C\u2500' + '\u2500'.repeat(colW);
-
   // Footer
   const footerParts = [
-    navNodes.length > 0 ? ' \u2191\u2193:navigate  ' : ' ',
+    navNodes.length > 0 ? ' \u2191\u2193:select  ' : ' ',
     canJump ? 'Enter:jump  ' : '',
-    'm/Esc:close',
+    'Tab:overview  Esc:close',
     navNodes.length > 0 ? `  [${nodeIdx + 1}/${navNodes.length}]` : '  [no deps]',
   ];
 
-  return (
-    <Box flexDirection="column" position="absolute" marginTop={0} marginLeft={0} width={width}>
-      {/* Header bar */}
-      <Box>
-        <Text backgroundColor={C.accent} color="#ffffff" bold>{` ${hStr} `}</Text>
-        <Text backgroundColor={BG}>{hFill}</Text>
+  // Build content lines, then fill remaining height
+  const contentLines: React.ReactNode[] = [];
+
+  // Header
+  contentLines.push(
+    <Box key="hdr" width={width}>
+      <Text backgroundColor={C.accent} color="#ffffff" bold>{` ${hStr} `}</Text>
+      <Text backgroundColor={BG}>{hFill}</Text>
+    </Box>
+  );
+
+  // Column headers
+  contentLines.push(
+    <Box key="cols" width={width}>
+      <Text backgroundColor={BG} color={C.dim}>{pad(` USED BY (${upNodes.length})`, colW)}</Text>
+      <Text backgroundColor={BG}>{' '.repeat(arrowW)}</Text>
+      <Text backgroundColor={BG} color={C.accent} bold>{pad(' FOCUS', focusColW)}</Text>
+      <Text backgroundColor={BG}>{' '.repeat(arrowW)}</Text>
+      <Text backgroundColor={BG} color={C.dim}>{pad(` USES (${downNodes.length})`, colW)}</Text>
+    </Box>
+  );
+
+  // Content rows
+  for (let rowIdx = 0; rowIdx < Math.max(1, maxVisible); rowIdx++) {
+    const upNode = upNodes[rowIdx];
+    const downNode = downNodes[rowIdx];
+    const upCur = !!upNode && (upOffset + rowIdx) === nodeIdx;
+    const downCur = !!downNode && (downOffset + rowIdx) === nodeIdx;
+    const showFocus = rowIdx === 0;
+
+    contentLines.push(
+      <Box key={`r${rowIdx}`} flexDirection="row" alignItems="center" width={width}>
+        <Box width={colW}>
+          {upNode ? <NodeBox node={upNode} isCur={upCur} boxW={colW} /> : <Text backgroundColor={BG}>{' '.repeat(colW)}</Text>}
+        </Box>
+        <Box width={arrowW} justifyContent="center">
+          {upNode ? <Arrow dir="left" inject={upNode.edgeType === 'inject'} w={arrowW} /> : <Text backgroundColor={BG}>{' '.repeat(arrowW)}</Text>}
+        </Box>
+        <Box width={focusColW}>
+          {showFocus ? <FocusBox data={data} focusColW={focusColW} /> : <Text backgroundColor={BG}>{' '.repeat(focusColW)}</Text>}
+        </Box>
+        <Box width={arrowW} justifyContent="center">
+          {downNode ? <Arrow dir="right" inject={downNode.edgeType === 'inject'} w={arrowW} /> : <Text backgroundColor={BG}>{' '.repeat(arrowW)}</Text>}
+        </Box>
+        <Box width={colW}>
+          {downNode ? <NodeBox node={downNode} isCur={downCur} boxW={colW} /> : <Text backgroundColor={BG}>{' '.repeat(colW)}</Text>}
+        </Box>
       </Box>
+    );
+  }
 
-      {/* Blank line */}
-      <BlankRow totalW={width} />
+  // Empty state
+  if (upNodes.length === 0 && downNodes.length === 0) {
+    contentLines.push(<Text key="empty" backgroundColor={BG} color={C.dim}>{pad('  No file-level dependencies found in repo graph.', width)}</Text>);
+  }
 
-      {/* Column headers */}
-      <Row
-        r={{
-          left: rpad(`USED BY (${upNodes.length})`, colW),
-          lc: C.dim,
-          mid: rpad('  FOCUS', focusColW),
-          mc: C.accent,
-          mb: true,
-          right: rpad(`USES (${downNodes.length})`, colW),
-          rc: C.dim,
-        }}
-        colW={colW} focusColW={focusColW} totalW={width}
-      />
+  // Footer
+  contentLines.push(<Text key="foot" backgroundColor={BG} color={C.dim}>{pad(footerParts.join(''), width)}</Text>);
 
-      {/* Horizontal separator */}
-      <Text backgroundColor={BG} color={C.border}>{rpad(sepStr, width)}</Text>
+  // Fill remaining height for opaque background
+  for (let i = contentLines.length; i < height; i++) {
+    contentLines.push(<Text key={`bg${i}`} backgroundColor={BG}>{' '.repeat(width)}</Text>);
+  }
 
-      {/* Content rows — each node = 2 display lines (name + detail) */}
-      {Array.from({ length: Math.max(1, maxVisible) }, (_, rowIdx) => {
-        const upNode = upNodes[rowIdx];
-        const downNode = downNodes[rowIdx];
-        const upGIdx = upOffset + rowIdx;
-        const downGIdx = downOffset + rowIdx;
-        const upCur = !!upNode && upGIdx === nodeIdx;
-        const downCur = !!downNode && downGIdx === nodeIdx;
-
-        // Depth-2 separator: dim '···' when we hit the boundary
-        const upIsSep = !upNode && rowIdx === upD1.length && upD2.length > 0;
-        const downIsSep = !downNode && rowIdx === downD1.length && downD2.length > 0;
-
-        const leftName = upNode
-          ? nodeNameLine(upNode, colW, upCur)
-          : upIsSep ? rpad(' \u00B7\u00B7\u00B7', colW) : rpad('', colW);
-        const leftDetail = upNode ? nodeDetailLine(upNode, colW) : rpad('', colW);
-        const rightName = downNode
-          ? nodeNameLine(downNode, colW, downCur)
-          : downIsSep ? rpad(' \u00B7\u00B7\u00B7', colW) : rpad('', colW);
-        const rightDetail = downNode ? nodeDetailLine(downNode, colW) : rpad('', colW);
-
-        const lnc = upNode ? (upCur ? C.accent : (upNode.isChanged ? C.orange : C.text)) : C.border;
-        const ldc = upCur ? C.cyan : C.dim;
-        const rnc = downNode ? (downCur ? C.accent : (downNode.isChanged ? C.orange : C.text)) : C.border;
-        const rdc = downCur ? C.cyan : C.dim;
-
-        // Depth-2 nodes slightly dimmer
-        const isUpD2 = upNode && upD1.length > 0 && rowIdx >= upD1.length;
-        const isDownD2 = downNode && downD1.length > 0 && rowIdx >= downD1.length;
-
-        const focusNameLine = focusLines[rowIdx * 2] ?? null;
-        const focusDetailLine = focusLines[rowIdx * 2 + 1] ?? null;
-
-        return (
-          <React.Fragment key={rowIdx}>
-            {/* Name line */}
-            <Row
-              r={{
-                left: leftName,
-                lc: isUpD2 && !upCur ? C.dim : lnc,
-                lb: upCur,
-                mid: focusNameLine ? focusNameLine.text : rpad('', focusColW),
-                mc: focusNameLine?.color ?? C.dim,
-                mb: focusNameLine?.bold,
-                right: rightName,
-                rc: isDownD2 && !downCur ? C.dim : rnc,
-                rb: downCur,
-              }}
-              colW={colW} focusColW={focusColW} totalW={width}
-            />
-            {/* Detail line */}
-            <Row
-              r={{
-                left: leftDetail,
-                lc: isUpD2 && !upCur ? '#333333' : ldc,
-                mid: focusDetailLine ? focusDetailLine.text : rpad('', focusColW),
-                mc: focusDetailLine?.color ?? C.dim,
-                right: rightDetail,
-                rc: isDownD2 && !downCur ? '#333333' : rdc,
-              }}
-              colW={colW} focusColW={focusColW} totalW={width}
-            />
-          </React.Fragment>
-        );
-      })}
-
-      {/* Empty state */}
-      {upNodes.length === 0 && downNodes.length === 0 && (
-        <Text backgroundColor={BG} color={C.dim}>{rpad('  No file-level dependencies found in repo graph.', width)}</Text>
-      )}
-
-      {/* Blank */}
-      <BlankRow totalW={width} />
-
-      {/* Footer */}
-      <Text backgroundColor={BG} color={C.dim}>{rpad(footerParts.join(''), width)}</Text>
+  return (
+    <Box flexDirection="column" position="absolute" marginTop={0} marginLeft={0} width={width} height={height}>
+      {contentLines}
     </Box>
   );
 }

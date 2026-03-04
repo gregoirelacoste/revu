@@ -102,7 +102,10 @@ function collectFindings(
         if (lr && (lr.flag === 'bug' || lr.flag === 'question' || lr.comments.length > 0)) {
           const type = lr.flag === 'bug' ? 'BUG' : lr.flag === 'question' ? '?' : 'OK';
           const comment = lr.comments.length > 0
-            ? lr.comments.map(c => c.text).join('; ')
+            ? lr.comments.map(c => {
+                const ts = c.time ? ` [${new Date(c.time).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}]` : '';
+                return `${c.text}${ts}`;
+              }).join('; ')
             : `Flagged ${lr.flag}`;
           findings.push({
             index: findings.length + 1,
@@ -145,7 +148,7 @@ function renderMethod(
 
   const lines: string[] = [];
   const methodFlags: string[] = [];
-  const methodComments: Array<{ flag: string; text: string }> = [];
+  const methodComments: Array<{ flag: string; text: string; time: string }> = [];
 
   for (const d of method.diff) {
     const lr = lineReviews.get(`${fileId}:${d.ln}`);
@@ -153,7 +156,7 @@ function renderMethod(
       if (lr.flag === 'bug') methodFlags.push('BUG');
       if (lr.flag === 'question') methodFlags.push('?');
       for (const c of lr.comments) {
-        methodComments.push({ flag: lr.flag, text: c.text });
+        methodComments.push({ flag: lr.flag, text: c.text, time: c.time });
       }
     }
   }
@@ -176,7 +179,8 @@ function renderMethod(
   // Comments
   for (const mc of methodComments) {
     const label = FLAG_LABEL[mc.flag] ?? mc.flag;
-    lines.push(`> **${label}** : ${mc.text}`);
+    const ts = mc.time ? ` _[${new Date(mc.time).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}]_` : '';
+    lines.push(`> **${label}** : ${mc.text}${ts}`);
   }
 
   return lines.join('\n');

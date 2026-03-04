@@ -12,6 +12,15 @@ export interface CommentsOverlayProps {
   selectedIdx: number;
 }
 
+function formatShortTime(iso: string): string {
+  try {
+    const d = new Date(iso);
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    return `${hh}:${mm}`;
+  } catch { return ''; }
+}
+
 export function CommentsOverlay({ data, width, height, selectedIdx }: CommentsOverlayProps) {
   const boxW = Math.min(72, width - 4);
   const padX = Math.max(0, Math.floor((width - boxW) / 2));
@@ -111,14 +120,17 @@ export function CommentsOverlay({ data, width, height, selectedIdx }: CommentsOv
                 <Text>{' '.repeat(Math.max(1, innerW - trimmed.length - 6))}</Text>
                 <Text color={C.accent}>{'\u2502'}</Text>
               </Box>
-              {shownComments.map((txt, ci) => {
-                const maxTxt = innerW - 7;
-                const t = txt.length > maxTxt ? txt.slice(0, maxTxt - 1) + '\u2026' : txt;
+              {shownComments.map((ct, ci) => {
+                const timeStr = ct.time ? formatShortTime(ct.time) : '';
+                const timeSuffix = timeStr ? ` ${timeStr}` : '';
+                const maxTxt = innerW - 7 - timeSuffix.length;
+                const t = ct.text.length > maxTxt ? ct.text.slice(0, maxTxt - 1) + '\u2026' : ct.text;
                 return (
                   <Box key={ci}>
                     <Text color={C.accent}>{'\u2502'}</Text>
                     <Text color={C.dim}>{`     \u2514 ${t}`}</Text>
-                    <Text>{' '.repeat(Math.max(1, innerW - t.length - 8))}</Text>
+                    {timeStr && <Text color={C.dim}>{` ${timeStr}`}</Text>}
+                    <Text>{' '.repeat(Math.max(1, innerW - t.length - 8 - timeSuffix.length))}</Text>
                     <Text color={C.accent}>{'\u2502'}</Text>
                   </Box>
                 );

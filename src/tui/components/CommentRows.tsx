@@ -13,19 +13,34 @@ interface CommentRowsProps {
   width: number;
 }
 
+function formatShortTime(iso: string): string {
+  try {
+    const d = new Date(iso);
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    return `${hh}:${mm}`;
+  } catch { return ''; }
+}
+
 export function CommentRows({ comments, inputMode, lineKey, width }: CommentRowsProps) {
   const maxText = Math.max(10, width - 8);
   const isInputHere = inputMode?.lineKey === lineKey;
 
   return (
     <>
-      {comments.map((c, i) => (
-        <Box key={`cmt${i}`}>
-          <Text color={C.dim}>{' \u2506 '}</Text>
-          <Text color={C.purple}>{'\u25C6 '}</Text>
-          <Text color={C.text}>{c.text.length > maxText ? c.text.slice(0, maxText - 1) + '\u2026' : c.text}</Text>
-        </Box>
-      ))}
+      {comments.map((c, i) => {
+        const timeStr = c.time ? formatShortTime(c.time) : '';
+        const availW = timeStr ? maxText - timeStr.length - 1 : maxText;
+        const txt = c.text.length > availW ? c.text.slice(0, availW - 1) + '\u2026' : c.text;
+        return (
+          <Box key={`cmt${i}`}>
+            <Text color={C.dim}>{' \u2506 '}</Text>
+            <Text color={C.purple}>{'\u25C6 '}</Text>
+            <Text color={C.text}>{txt}</Text>
+            {timeStr && <Text color={C.dim}>{` ${timeStr}`}</Text>}
+          </Box>
+        );
+      })}
       {isInputHere && (
         <Box>
           <Text color={C.dim}>{' \u2506 '}</Text>

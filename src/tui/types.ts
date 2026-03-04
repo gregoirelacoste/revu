@@ -104,3 +104,40 @@ export interface ContextData {
   reviewStats?: ReviewStats;
   activeMethod?: string;
 }
+
+// ── Review Map ──
+
+export type MapMode = 'overview' | 'focus';
+
+export interface ClusterFile {
+  fileId: string;
+  name: string;
+  type: string;
+  crit: number;
+  progress: 'none' | 'partial' | 'complete';
+  bugs: number;
+  questions: number;
+  sideEffect: boolean;
+}
+
+export interface Cluster {
+  name: string;
+  files: ClusterFile[];
+  maxCrit: number;
+  totalBugs: number;
+}
+
+export interface RepoClusterData {
+  repoName: string;
+  branch: string;
+  fileCount: number;
+  maxCrit: number;
+  clusters: Cluster[];
+  standalone: ClusterFile[];
+}
+
+export interface ClusterMapData {
+  repos: RepoClusterData[];
+  globalStats: ReviewStats;
+  sideEffects: Array<{ file: string; methods: string[] }>;
+}

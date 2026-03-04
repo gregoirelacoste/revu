@@ -20,6 +20,8 @@ import { MethodMapOverlay } from './components/MethodMapOverlay.js';
 import { CommentsOverlay } from './components/CommentsOverlay.js';
 import { loadSyntaxTheme } from './syntax.js';
 import { buildMethodMapData } from './method-map-data.js';
+import { buildClusterMapData } from './cluster-data.js';
+import { ReviewMapOverlay } from './components/ReviewMapOverlay.js';
 import { collectAllComments } from './comment-data.js';
 import { buildTree, filterTree, flattenTree, buildFileDiffs, buildUnifiedRows } from './data.js';
 import { getFileContext, getMethodContext, getFolderContext, getRepoContext } from './context.js';
@@ -30,7 +32,7 @@ import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 import type { ScanResult } from '../core/engine.js';
 import { rescore } from '../core/engine.js';
-import type { ContextData, DiffMode, DiffRow, FlatItem, TreeItem, TuiDiffLine, TuiFileDiff } from './types.js';
+import type { ContextData, DiffMode, DiffRow, FlatItem, MapMode, TreeItem, TuiDiffLine, TuiFileDiff } from './types.js';
 
 import type { LineReview } from './hooks/useReview.js';
 import { isReviewValid } from './hooks/useReview.js';
@@ -126,6 +128,9 @@ export function App({ initialData, rootDir, rescan }: AppProps) {
   const [resetPrompt, setResetPrompt] = useState(false);
   const [showMap, setShowMap] = useState(false);
   const [mapNodeIdx, setMapNodeIdx] = useState(0);
+  const [mapMode, setMapMode] = useState<MapMode>('overview');
+  const [clusterIdx, setClusterIdx] = useState(0);
+  const [fileIdxInCluster, setFileIdxInCluster] = useState(0);
   const [showComments, setShowComments] = useState(false);
   const [commentIdx, setCommentIdx] = useState(0);
   const [focusMode, setFocusMode] = useState(false);
@@ -486,9 +491,15 @@ export function App({ initialData, rootDir, rescan }: AppProps) {
     return null;
   }, [panel, safeDiffCursor, navDiffRows]);
 
-  // Method map data — built lazily only when map is open
+  // Cluster map data — built lazily only when overview map is open
+  const clusterMapData = useMemo(() => {
+    if (!showMap || mapMode !== 'overview') return null;
+    return buildClusterMapData(data, diffs, lineReviews);
+  }, [showMap, mapMode, data, diffs, lineReviews, dataVersion]);
+
+  // Method map data — built lazily only when focus map is open
   const methodMapData = useMemo(() => {
-    if (!showMap || !selectedFile) return null;
+    if (!showMap || mapMode !== 'focus' || !selectedFile) return null;
     const diff = diffs.get(selectedFile);
     const repoName = fileToRepo.get(selectedFile);
     if (!diff || !repoName) return null;
@@ -497,7 +508,7 @@ export function App({ initialData, rootDir, rescan }: AppProps) {
     const repo = data.repos.find(r => r.name === repoName);
     if (!repo) return null;
     return buildMethodMapData(diff.path, currentMethodName, graph, repo.files, diffs);
-  }, [showMap, selectedFile, currentMethodName, data, diffs, fileToRepo]);
+  }, [showMap, mapMode, selectedFile, currentMethodName, data, diffs, fileToRepo]);
 
   const ctx = useMemo((): ContextData | null => {
     if ((panel === 1 || panel === 2) && activeFile) {
@@ -548,9 +559,9 @@ export function App({ initialData, rootDir, rescan }: AppProps) {
   });
 
   useNavigation(
-    { panel, treeIdx: safeIdx, selectedFile, diffScroll, diffCursor: safeDiffCursor, ctxIdx, minCrit, collapsed, inputMode, searchQuery, showHelp, explorerToggle, diffToggle, focusMode, resetPrompt, showMap, mapNodeIdx, showComments, commentIdx },
-    { setPanel, setTreeIdx, setSelectedFile, setDiffScroll, setDiffCursor, setCtxIdx, setMinCrit, setLineFlag, setLineFlagBatch, setBatchMsg: handleBatchMsg, setCollapsed, setInputMode, setSearchQuery, setShowHelp, setExplorerToggle, setDiffToggle, setFocusMode, setResetPrompt, setShowMap, setMapNodeIdx, setShowComments, setCommentIdx, onExport: handleExport, onOpenNotes: handleOpenNotes, onToggleDiffMode: handleToggleDiffMode, onToggleAIScoring: handleToggleAIScoring, onResetReview: handleResetReview, onRescan: triggerRescan, historyPush: history.push, historyGoBack: history.goBack, historyGoForward: history.goForward },
-    { flatTree, diffRows: navDiffRows, diffs, ctx, bodyH, lineReviews, fileProgress, methodMapData, commentData, methodReviewStatus, fullFileLineCount },
+    { panel, treeIdx: safeIdx, selectedFile, diffScroll, diffCursor: safeDiffCursor, ctxIdx, minCrit, collapsed, inputMode, searchQuery, showHelp, explorerToggle, diffToggle, focusMode, resetPrompt, showMap, mapNodeIdx, mapMode, clusterIdx, fileIdxInCluster, showComments, commentIdx },
+    { setPanel, setTreeIdx, setSelectedFile, setDiffScroll, setDiffCursor, setCtxIdx, setMinCrit, setLineFlag, setLineFlagBatch, setBatchMsg: handleBatchMsg, setCollapsed, setInputMode, setSearchQuery, setShowHelp, setExplorerToggle, setDiffToggle, setFocusMode, setResetPrompt, setShowMap, setMapNodeIdx, setMapMode, setClusterIdx, setFileIdxInCluster, setShowComments, setCommentIdx, onExport: handleExport, onOpenNotes: handleOpenNotes, onToggleDiffMode: handleToggleDiffMode, onToggleAIScoring: handleToggleAIScoring, onResetReview: handleResetReview, onRescan: triggerRescan, historyPush: history.push, historyGoBack: history.goBack, historyGoForward: history.goForward },
+    { flatTree, diffRows: navDiffRows, diffs, ctx, bodyH, lineReviews, fileProgress, methodMapData, clusterMapData, commentData, methodReviewStatus, fullFileLineCount },
   );
 
   // Visible slices
@@ -740,9 +751,12 @@ export function App({ initialData, rootDir, rescan }: AppProps) {
       </Box>
 
       {/* Overlays — rendered AFTER panels so they paint on top */}
-      {showMap && (methodMapData
+      {showMap && mapMode === 'overview' && clusterMapData && (
+        <ReviewMapOverlay data={clusterMapData} width={size.w} height={bodyH} clusterIdx={clusterIdx} fileIdx={fileIdxInCluster} selectedFile={selectedFile} />
+      )}
+      {showMap && mapMode === 'focus' && (methodMapData
         ? <MethodMapOverlay data={methodMapData} width={size.w} height={bodyH} nodeIdx={mapNodeIdx} />
-        : <Box position="absolute" marginTop={2} marginLeft={4}><Text backgroundColor="#0a1628" color={C.dim}> No dependency graph available for this file. Press m or Esc to close. </Text></Box>
+        : <Box position="absolute" marginTop={2} marginLeft={4}><Text backgroundColor="#0a1628" color={C.dim}> No deps for this file. Tab:overview  Esc:close </Text></Box>
       )}
       {showComments && commentData && <CommentsOverlay data={commentData} width={size.w} height={bodyH} selectedIdx={commentIdx} />}
       {showHelp && <HelpOverlay width={size.w} height={bodyH} />}
